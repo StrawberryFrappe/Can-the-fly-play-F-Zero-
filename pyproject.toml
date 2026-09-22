@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flyzero"
+version = "0.1.0"
+description = "A simulated whole Drosophila brain (FlyWire connectome) playing F-Zero on the SNES"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "pyarrow",
+    "Pillow",
+    "imageio",
+    "imageio-ffmpeg",
+    "stable-retro",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+flyzero = "flyzero.cli:main"
+
+[tool.setuptools]
+packages = ["flyzero"]

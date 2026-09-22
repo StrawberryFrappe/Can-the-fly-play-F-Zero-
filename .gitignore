@@ -1,0 +1,7 @@
+__pycache__/
+*.egg-info/
+*.sfc
+*.smc
+*.state
+*.mp4
+.pytest_cache/
