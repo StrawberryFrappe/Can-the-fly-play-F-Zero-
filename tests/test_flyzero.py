@@ -112,3 +112,19 @@ def test_numba_and_numpy_backends_agree_without_noise():
         b.v[:40] = -40.0  # kick-start a few neurons deterministically, no Poisson input
         out.append(b.run(50))
     np.testing.assert_array_equal(out[0], out[1])
+
+
+def test_xbox_mapping():
+    from flyzero.record import pad_to_buttons, parse_map
+
+    m = parse_map(None)
+    pressed = [False] * 11
+    pressed[m["A"]] = pressed[m["LB"]] = True
+    b = pad_to_buttons(pressed, hat_x=-1, hat_y=0, stick_x=0.0, mapping=m)
+    assert b["B"] and b["L"] and b["LEFT"]            # A = gas, LB = L, D-pad left
+    assert not (b["A"] or b["Y"] or b["RIGHT"] or b["R"])
+    b = pad_to_buttons([False] * 11, 0, 0, stick_x=0.9, mapping=m)
+    assert b["RIGHT"]                                  # left stick steers too
+    m2 = parse_map("A=1,B=0")
+    pressed = [False] * 11; pressed[1] = True
+    assert pad_to_buttons(pressed, 0, 0, 0.0, m2)["B"]  # remapped A still means gas

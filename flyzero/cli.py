@@ -228,13 +228,23 @@ def main(argv=None):
     le.add_argument("--out", default="learn")
     le.set_defaults(func=cmd_learn)
 
-    r = sub.add_parser("record", help="play F-Zero yourself; your inputs become the fly's lessons")
-    r.add_argument("--rom", required=True)
+    r = sub.add_parser("record", help="play F-Zero yourself (keyboard or Xbox controller); "
+                                       "your inputs become the fly's lessons")
+    r.add_argument("--rom")
     r.add_argument("--out", default="my_races.npz")
     r.add_argument("--scale", type=int, default=3)
+    r.add_argument("--map", help='controller button numbers, e.g. "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"')
+    r.add_argument("--controller-test", action="store_true", help="show what each controller button reports")
     r.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
-    r.set_defaults(func=lambda a: __import__("flyzero.record", fromlist=["play"]).play(
-        a.rom, a.out, a.scale, a.max_frames))
+
+    def _record(a):
+        from . import record
+        if a.controller_test:
+            return record.controller_test()
+        if not a.rom:
+            sys.exit("--rom is required")
+        record.play(a.rom, a.out, a.scale, a.max_frames, a.map)
+    r.set_defaults(func=_record)
 
     rp = sub.add_parser("replay", help="check that a recording replays exactly here")
     rp.add_argument("--rom", required=True)

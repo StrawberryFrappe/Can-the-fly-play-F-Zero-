@@ -8,12 +8,20 @@ few checkpoints of the game state, so the race can be replayed exactly on anothe
 running the same emulator core (stable-retro's snes9x). Only your inputs are saved, not the
 ROM or any video.
 
-Keys (keyboard / typical gamepad mapping):
+Controls. Xbox controller (first one found):
+
+    D-pad / left stick  steer      A  gas          B  super jet     X  brake
+    LB / RB             lean L / R Start  pause    View/Back  restart the race
+
+Keyboard (works at the same time):
 
     arrows   steer            X  accelerate (B)      Z  brake (Y)
     C        super jet (A)    A  lean left (L)       S  lean right (R)
     Enter    pause (START)    Backspace  restart the race     Esc  save and quit
-    F        toggle 1x / 2x window scale
+    F        toggle window size
+
+Controllers number their buttons differently per OS. Run with --controller-test to see what
+each button reports, then pass e.g. --map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6".
 
 Everything you play is saved: each attempt is one "race" in the file. Only needs numpy,
 pyglet and stable-retro (no connectome, no brain).
@@ -37,6 +45,32 @@ KEYMAP = {  # pyglet key name -> SNES button
     "ENTER": "START", "RETURN": "START",
 }
 CHECK_EVERY = 60  # frames between sync checkpoints (lap, segment)
+
+# Xbox controller: button index (Linux xpad / xinput order) -> what it does in F-Zero
+XBOX_DEFAULT = {"A": 0, "B": 1, "X": 2, "Y": 3, "LB": 4, "RB": 5, "BACK": 6, "START": 7}
+XBOX_TO_SNES = {"A": "B", "B": "A", "X": "Y", "LB": "L", "RB": "R", "START": "START"}
+
+
+def parse_map(text: str | None) -> dict:
+    m = dict(XBOX_DEFAULT)
+    for part in (text or "").split(","):
+        if "=" in part:
+            k, v = part.split("=")
+            m[k.strip().upper()] = int(v)
+    return m
+
+
+def pad_to_buttons(buttons, hat_x: float, hat_y: float, stick_x: float, mapping: dict) -> dict:
+    """Xbox controller state -> SNES buttons (the user's layout)."""
+    def down(name):
+        i = mapping.get(name)
+        return i is not None and i < len(buttons) and bool(buttons[i])
+    out = {snes: down(xbox) for xbox, snes in XBOX_TO_SNES.items()}
+    out["LEFT"] = hat_x < -0.5 or stick_x < -0.5 or down("DPAD_LEFT")
+    out["RIGHT"] = hat_x > 0.5 or stick_x > 0.5 or down("DPAD_RIGHT")
+    out["UP"] = hat_y > 0.5 or down("DPAD_UP")
+    out["DOWN"] = hat_y < -0.5 or down("DPAD_DOWN")
+    return out
 
 
 def buttons_to_mask(pressed: dict) -> np.ndarray:
@@ -93,7 +127,28 @@ class Session:
         print(f"saved {len(self.races)} race(s) to {out}")
 
 
-def play(rom: str, out: str, scale: int = 3, max_frames: int = 0):
+def open_pad(window=None):
+    import pyglet
+
+    try:
+        pads = pyglet.input.get_joysticks()
+    except Exception as e:  # no /dev/input, no permission, ...
+        print(f"can't read controllers ({e}): keyboard only")
+        return None
+    if not pads:
+        print("no controller found: keyboard only")
+        return None
+    pad = pads[0]
+    try:
+        pad.open(window)
+    except Exception as e:
+        print(f"can't open {pad.device.name} ({e}): keyboard only")
+        return None
+    print(f"controller: {pad.device.name}")
+    return pad
+
+
+def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str | None = None):
     import pyglet
     from pyglet.window import key
 
@@ -102,46 +157,76 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0):
     win = pyglet.window.Window(w * scale, h * scale, caption="F-Zero: teach the fly  (Esc = save & quit)")
     keys = key.KeyStateHandler()
     win.push_handlers(keys)
-    state = {"scale": scale, "quit": False}
+    pad = open_pad(win)
+    mapping = parse_map(pad_map)
+    state = {"scale": scale, "back_was_down": False}
+
+    def restart():
+        s.finish_race()
+        s.new_race()
 
     @win.event
     def on_key_press(symbol, modifiers):
         if symbol == key.ESCAPE:
-            state["quit"] = True
+            pyglet.app.exit()
             return pyglet.event.EVENT_HANDLED
         if symbol == key.BACKSPACE:
-            s.finish_race()
-            s.new_race()
+            restart()
         if symbol == key.F:
             state["scale"] = 2 if state["scale"] != 2 else 3
             win.set_size(w * state["scale"], h * state["scale"])
 
     @win.event
     def on_close():
-        state["quit"] = True
+        pyglet.app.exit()
 
-    print(__doc__.split("Keys")[1])
-    frame_time = 1.0 / FZero.fps
-    next_t = time.perf_counter()
-    while not state["quit"]:
-        win.dispatch_events()
-        pressed = {btn: bool(keys[getattr(key, name)]) for name, btn in KEYMAP.items()
-                   if hasattr(key, name)}
-        frame = s.step(pressed)
-        img = pyglet.image.ImageData(w, h, "RGB", np.ascontiguousarray(frame[::-1]).tobytes())
+    @win.event
+    def on_draw():
+        img = pyglet.image.ImageData(w, h, "RGB", np.ascontiguousarray(s.frame[::-1]).tobytes())
         win.clear()
-        img.get_texture().blit(0, 0, width=w * state["scale"], height=h * state["scale"])
-        win.flip()
-        next_t += frame_time
-        delay = next_t - time.perf_counter()
-        if delay > 0:
-            time.sleep(delay)
-        else:
-            next_t = time.perf_counter()
+        img.get_texture().blit(0, 0, width=win.width, height=win.height)
+
+    def tick(dt):
+        pressed = {btn: bool(keys[getattr(key, name)]) for name, btn in KEYMAP.items() if hasattr(key, name)}
+        if pad is not None:
+            p = pad_to_buttons(pad.buttons, pad.hat_x, pad.hat_y, pad.x, mapping)
+            pressed = {b: pressed.get(b, False) or p.get(b, False) for b in set(pressed) | set(p)}
+            back = mapping.get("BACK") is not None and mapping["BACK"] < len(pad.buttons) \
+                and bool(pad.buttons[mapping["BACK"]])
+            if back and not state["back_was_down"]:
+                restart()
+            state["back_was_down"] = back
+        s.step(pressed)
         if max_frames and len(s.masks) >= max_frames:
-            state["quit"] = True
+            pyglet.app.exit()
+
+    print(__doc__.split("Controls.")[1].split("Everything")[0])
+    pyglet.clock.schedule_interval(tick, 1.0 / FZero.fps)
+    pyglet.app.run()
     win.close()
     s.save(out)
+
+
+def controller_test(seconds: float = 60.0):
+    """Print what the controller reports, to fix the mapping with --map."""
+    import pyglet
+
+    win = pyglet.window.Window(360, 120, caption="controller test: press buttons (Esc to quit)")
+    pad = open_pad(win)
+    if pad is None:
+        return
+    last = {}
+
+    def tick(dt):
+        now = {"buttons": [i for i, v in enumerate(pad.buttons) if v],
+               "hat": (pad.hat_x, pad.hat_y), "stick": (round(pad.x, 1), round(pad.y, 1))}
+        if now != last:
+            print(now, flush=True)
+            last.clear(); last.update(now)
+
+    pyglet.clock.schedule_interval(tick, 1 / 30)
+    pyglet.clock.schedule_once(lambda dt: pyglet.app.exit(), seconds)
+    pyglet.app.run()
 
 
 def replay(rom: str, recording: str, race: int = 0, on_frame=None) -> dict:
@@ -170,9 +255,14 @@ def main(argv=None):
     ap.add_argument("--rom", required=True)
     ap.add_argument("--out", default="my_races.npz")
     ap.add_argument("--scale", type=int, default=3)
+    ap.add_argument("--map", help='controller button numbers, e.g. "A=0,B=1,X=2,LB=4,RB=5"')
+    ap.add_argument("--controller-test", action="store_true")
     ap.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    play(a.rom, a.out, a.scale, a.max_frames)
+    if a.controller_test:
+        controller_test()
+    else:
+        play(a.rom, a.out, a.scale, a.max_frames, a.map)
 
 
 if __name__ == "__main__":

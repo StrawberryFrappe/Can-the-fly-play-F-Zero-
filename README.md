@@ -212,16 +212,21 @@ flyzero record --rom "F-Zero (USA).sfc" --out my_races.npz
 
 A window opens, the menus run by themselves, and you get control on the Mute City I grid.
 
-| Key | Action |
-|---|---|
-| arrows | steer |
-| X | accelerate (B) |
-| Z | brake (Y) |
-| C | super jet (A) |
-| A / S | lean L / R |
-| Enter | pause |
-| Backspace | restart the race |
-| Esc | save & quit |
+| F-Zero | Xbox controller | Keyboard |
+|---|---|---|
+| steer | D-pad or left stick | arrows |
+| accelerate (B) | A | X |
+| super jet (A) | B | C |
+| brake (Y) | X | Z |
+| lean L / R | LB / RB | A / S |
+| pause | Start | Enter |
+| restart the race | View/Back | Backspace |
+| save & quit | — | Esc |
+
+Controllers number their buttons differently on each OS. If a button does the wrong thing, run
+`flyzero record --controller-test`, press each button to see its number, then pass them in:
+`--map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"` (the default is the Linux Xbox layout). On Linux
+the controller must be readable by your user, which it normally is for the logged-in user.
 
 Every attempt is kept. The file holds only your button presses (a few hundred KB) plus sync
 checkpoints, not the ROM or any video. `flyzero replay --rom ... my_races.npz` re-runs it and
