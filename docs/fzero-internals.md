@@ -107,13 +107,12 @@ was a first lap of about 0'30"8 on Beginner, running 3rd.
 |---|---|---|
 | POWER bar | row `y = 22`, `x = 176 … 239` (64 px) | filled pixels are light pink `(248, 200, 248)`; energy = share of pixels with `R > 180, B > 180, G < 235`. White border at `x = 175` and `240` | ✅ |
 | Sky colour | `(104, 144, 248)` at the top rows | handy for "is the HUD visible" checks |
+| Road surface (Mute City I) | everywhere on the track | exactly `(144, 160, 160)`: segment the road with a colour match. Useful for road-following drivers and training targets | ✅ |
 
 Energy drains on guard-beam contact. At zero you get "POWER DOWN", then the machine explodes
 and "YOU LOST" appears (about 1 s later). Afterwards `$0B20` stays stuck at **512**, not 0, so
 detect the crash by track progress instead: `FZero.step` reports `done` after 600 frames without
 a segment change.
-
-| Road surface colour (Mute City I) | exactly `(144, 160, 160)` RGB. Useful for road-segmentation drivers and teachers |
 
 ## Race rules that matter for agents
 
