@@ -69,7 +69,7 @@ def to_tensor(obs_now, obs_prev):
 
 
 def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
-        exam_frames: int = 3600, seed: int = 0, threads: int = 2):
+        exam_frames: int = 3600, seed: int = 0, threads: int = 2, mirror: bool = True):
     import torch
     import torch.nn.functional as F
 
@@ -87,13 +87,17 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
         game.em.set_state(L[f"l{i}_state"].tobytes())
         frame = game._press({})
         prev = observe(frame)
-        for m in L[f"l{i}_masks"]:
+        masks = L[f"l{i}_masks"]
+        racing = L[f"l{i}_racing"] if f"l{i}_racing" in L else np.ones(len(masks), bool)
+        for m, is_racing in zip(masks, racing):
             cur = observe(frame)
-            obs.append(np.concatenate([cur, prev], -1))
-            y.append(labels(m))
+            if is_racing:  # menus / results / retry screens are not driving lessons
+                obs.append(np.concatenate([cur, prev], -1))
+                y.append(labels(m))
             prev = cur
             frame = game._press(mask_to_buttons(m))
     X = np.stack(obs)                     # N x 56 x 64 x 6 uint8
+    del obs
     Y = np.array(y, np.int64)
     n = len(X)
     print(f"dataset: {n} frames", flush=True)
@@ -113,8 +117,15 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
         net.train()
         for b in range(0, split, 256):
             idx = perm[b:b + 256]
-            outs = net(Xt[idx].float() / 255.0)
-            loss = sum(F.cross_entropy(o, Yt[idx, k], weight=wts[k]) for k, o in enumerate(outs))
+            xb, yb = Xt[idx].float() / 255.0, Yt[idx].clone()
+            if mirror:  # mirror world for half the batch: flip the view, swap left/right
+                flip = torch.rand(len(idx)) < 0.5
+                xb[flip] = xb[flip].flip(-1)
+                for k in (0, 1):
+                    col = yb[flip, k]
+                    yb[flip, k] = torch.where(col == 1, 2, torch.where(col == 2, 1, col))
+            outs = net(xb)
+            loss = sum(F.cross_entropy(o, yb[:, k], weight=wts[k]) for k, o in enumerate(outs))
             opt.zero_grad(); loss.backward(); opt.step()
         net.eval()
         with torch.no_grad():

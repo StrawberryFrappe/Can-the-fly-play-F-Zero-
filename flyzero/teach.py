@@ -49,7 +49,7 @@ def build_lessons(rom: str, recordings: list[str], out: str):
 
 
 def _worker(args):
-    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, flight_hz, mirror = args
+    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror = args
     from . import connectome as cx
     from .biology import corrected
     from .brain import Brain, LIFParams
@@ -86,10 +86,12 @@ def _worker(args):
         eye.lp_hp = None
         return game._press({})
 
+    # flying and wanting to go: a steady depolarisation of the motor neurons (noise-free), so
+    # they sit just around threshold where their input synapses decide what they do
+    brain.set_bias(np.r_[flight, drive], bias_mv)
+
     def think(frame):
-        rates = eye.see(frame)
-        brain.set_input(np.r_[eye.idx, drive, flight],
-                        np.r_[rates, np.full(len(drive), 60.0), np.full(len(flight), flight_hz)])
+        brain.set_input(eye.idx, eye.see(frame))
         return brain.run(window)
 
     def run_exam():
@@ -132,10 +134,10 @@ def _worker(args):
         np.savez(Path(out) / f"taught_fly{k}_epoch{epoch}.npz", **plast.state())
 
 
-def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), flight_hz=30.0,
+def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), bias_mv=7.8,
           mirror=True):
     Path(out).mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
     with ctx.Pool(len(etas)) as pool:
-        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, flight_hz, mirror)
+        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror)
                            for k, eta in enumerate(etas)])

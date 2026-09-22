@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 def _kernel(steps, t, n_delay, v, g, ref, pending, counts, indptr, indices, data,
-            input_idx, p_in, kick, decay_syn, decay_m, v_rest, v_th, v_reset, n_ref, seed):
+            input_idx, p_in, kick, decay_syn, decay_m, v_rest, v_th, v_reset, n_ref, seed, bias):
     np.random.seed(seed)
     n = v.shape[0]
     for _ in range(steps):
@@ -42,7 +42,7 @@ def _kernel(steps, t, n_delay, v, g, ref, pending, counts, indptr, indices, data
             if ref[i] > 0:
                 ref[i] -= 1
             else:
-                v[i] += (g[i] - (v[i] - v_rest)) * decay_m
+                v[i] += (g[i] + bias[i] - (v[i] - v_rest)) * decay_m
         for j in range(input_idx.shape[0]):
             if np.random.random() < p_in[j]:
                 v[input_idx[j]] += kick
@@ -99,6 +99,7 @@ class Brain:
         # external drive: neuron index -> Poisson rate (Hz)
         self.input_idx = np.zeros(0, np.int64)
         self.input_rate = np.zeros(0, np.float32)
+        self.bias = np.zeros(self.n, np.float32)
 
     def reset(self):
         self.v = np.full(self.n, self.p.v_rest, np.float32)
@@ -107,6 +108,12 @@ class Brain:
         self.pending = np.zeros((self.n_delay, self.n), np.float32)
         self.t = 0
         self.spike_count = np.zeros(self.n, np.int32)
+
+    def set_bias(self, idx: np.ndarray, mv: float | np.ndarray):
+        """Steady depolarising current (in mV of steady-state shift) for the given neurons, e.g. a
+        behavioural state that raises excitability. Unlike Poisson drive, it adds no noise."""
+        self.bias[:] = 0.0
+        self.bias[np.asarray(idx, np.int64)] = mv
 
     def set_input(self, idx: np.ndarray, rate_hz: np.ndarray):
         """Poisson drive (Hz) for the given neurons, replacing previous input."""
@@ -134,7 +141,7 @@ class Brain:
                              counts, self.indptr, self.indices, self.data, self.input_idx,
                              p_in.astype(np.float64), self.kick, self.decay_syn, self.decay_m,
                              np.float32(p.v_rest), np.float32(p.v_th), np.float32(p.v_reset),
-                             np.int16(self.n_ref), int(self.rng.integers(2**31)))
+                             np.int16(self.n_ref), int(self.rng.integers(2**31)), self.bias)
             self.spike_count += counts
             return counts
         for _ in range(steps):
@@ -145,7 +152,8 @@ class Brain:
             self.pending[slot] = 0.0
 
             active = self.ref <= 0
-            self.v += np.where(active, (self.g - (self.v - p.v_rest)) * self.decay_m, 0.0).astype(np.float32)
+            self.v += np.where(active, (self.g + self.bias - (self.v - p.v_rest)) * self.decay_m,
+                               0.0).astype(np.float32)
             self.ref[~active] -= 1
 
             if len(self.input_idx):
