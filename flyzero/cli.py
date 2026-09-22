@@ -272,6 +272,16 @@ def main(argv=None):
     te.set_defaults(func=lambda a: __import__("flyzero.teach", fromlist=["teach"]).teach(
         a.rom, a.lessons, a.exam, a.epochs, a.exam_frames, a.out))
 
+    bl = sub.add_parser("baseline", help="the comparison: a small CNN taught from the same races")
+    bl.add_argument("--rom", required=True)
+    bl.add_argument("--lessons", required=True)
+    bl.add_argument("--exam", required=True)
+    bl.add_argument("--epochs", type=int, default=6)
+    bl.add_argument("--exam-frames", type=int, default=3600)
+    bl.add_argument("--out", default="baseline")
+    bl.set_defaults(func=lambda a: __import__("flyzero.baseline", fromlist=["run"]).run(
+        a.rom, a.lessons, a.exam, a.out, a.epochs, a.exam_frames))
+
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":
         args.drive = ["DNp09=60"]

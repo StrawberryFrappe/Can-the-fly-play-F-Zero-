@@ -26,6 +26,7 @@ dependencies = [
 test = ["pytest"]
 fast = ["numba"]
 tune = ["cma", "numba"]
+baseline = ["torch"]
 
 [project.scripts]
 flyzero = "flyzero.cli:main"
