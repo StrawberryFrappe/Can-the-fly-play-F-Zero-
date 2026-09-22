@@ -251,8 +251,26 @@ def main(argv=None):
     rp = sub.add_parser("replay", help="check that a recording replays exactly here")
     rp.add_argument("--rom", required=True)
     rp.add_argument("recording")
-    rp.set_defaults(func=lambda a: [print(r) for r in __import__(
-        "flyzero.record", fromlist=["replay_all"]).replay_all(a.rom, a.recording)])
+    rp.set_defaults(func=lambda a: [print({k: v for k, v in r.items() if k != "start_state"})
+                                    for r in __import__("flyzero.record", fromlist=["replay_all"])
+                                    .replay_all(a.rom, a.recording)])
+
+    ls = sub.add_parser("lessons", help="turn recordings into training lessons (verifies each race)")
+    ls.add_argument("--rom", required=True)
+    ls.add_argument("recordings", nargs="+")
+    ls.add_argument("--out", default="lessons.npz")
+    ls.set_defaults(func=lambda a: __import__("flyzero.teach", fromlist=["build_lessons"]).build_lessons(
+        a.rom, a.recordings, a.out))
+
+    te = sub.add_parser("teach", help="teach the fly from recorded races, exam it solo each epoch")
+    te.add_argument("--rom", required=True)
+    te.add_argument("--lessons", required=True)
+    te.add_argument("--exam", required=True, help="start-line save state for the solo exam")
+    te.add_argument("--epochs", type=int, default=4)
+    te.add_argument("--exam-frames", type=int, default=3600)
+    te.add_argument("--out", default="taught")
+    te.set_defaults(func=lambda a: __import__("flyzero.teach", fromlist=["teach"]).teach(
+        a.rom, a.lessons, a.exam, a.epochs, a.exam_frames, a.out))
 
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":

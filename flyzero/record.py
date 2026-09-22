@@ -410,12 +410,14 @@ def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None)
     game = FZero(rom, core=core)
     results = []
     for race in range(int(d["n_races"])):
+        start = None
         if f"race{race}_start_state" in d:
             game.em.set_state(d[f"race{race}_start_state"].tobytes())
             game.frame_no, game.info = 0, {}
             game._last_move = game._empty = 0
         else:
             game.reset()
+        start = bytes(game.em.get_state())
         masks = d[f"race{race}_masks"]
         checks = {int(f): (int(lap), int(seg)) for f, lap, seg in d[f"race{race}_checks"]}
         mismatches = 0
@@ -428,7 +430,7 @@ def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None)
                 ram = game.ram()
                 if (int(ram[lap_addr]), int(ram[RAM_SEGMENT])) != checks[i]:
                     mismatches += 1
-        results.append({"race": race, "frames": len(masks), "checkpoints": len(checks),
+        results.append({"race": race, "start_state": start, "frames": len(masks), "checkpoints": len(checks),
                         "mismatches": mismatches, "laps": game.info.get("lap"),
                         "segment": game.info.get("segment")})
     return results
