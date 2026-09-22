@@ -28,7 +28,9 @@ what each button reports, then pass e.g. --map "A=0,B=1,X=2,LB=4,RB=5,START=7,BA
 (Windows uses XInput, where the layout is fixed.)
 
 Everything you play is saved: each attempt is one "race" in the file. To race the whole Grand
-Prix, just keep driving through the results screens. Game sound plays if `sounddevice` is
+Prix, just keep driving through the results screens. --mute-city: after each finish you're put
+straight back on the Mute City I grid (back-to-back runs). --queen-league: the menus pick the
+Queen League (Mute City II, Port Town I, Red Canyon I, White Land I, White Land II). Game sound plays if `sounddevice` is
 installed (--no-audio to mute). Only needs numpy,
 pyglet and stable-retro (no connectome, no brain).
 """
@@ -93,9 +95,10 @@ def mask_to_buttons(mask: np.ndarray) -> dict:
 class Session:
     """Game + recording logic, independent of the window (so it can be tested headless)."""
 
-    def __init__(self, rom: str, core: str | None = None):
+    def __init__(self, rom: str, core: str | None = None, league: str = "knight"):
         self.rom = rom
-        self.game = FZero(rom, core=core)
+        self.league = league
+        self.game = FZero(rom, core=core, league=league)
         print(f"emulator: {self.game.backend}")
         self.races = []
         self.sha1 = hashlib.sha1(Path(rom).read_bytes()).hexdigest()
@@ -103,8 +106,8 @@ class Session:
         self.new_race()
 
     def new_race(self):
-        """Back to the Mute City I grid from power-on (to race the whole Grand Prix, just keep
-        driving through the results screens instead)."""
+        """Back to the first grid of the league from power-on (to race the whole Grand Prix, just
+        keep driving through the results screens instead)."""
         self.game.em.set_state(self.power_on)
         self.frame = self.game.reset()
         self.start_state = bytes(self.game.em.get_state())
@@ -134,7 +137,8 @@ class Session:
     def save(self, out: str):
         self.finish_race()
         data = {"rom_sha1": self.sha1, "buttons": np.array(BUTTONS), "n_races": len(self.races),
-                "menu": np.array(repr(FZero.menu)), "check_lap_addr": RAM_LAP}
+                "menu": np.array(repr(self.game.menu)), "league": np.array(self.league),
+                "check_lap_addr": RAM_LAP}
         out = Path(out)
         if out.exists():  # never overwrite earlier sessions: my_races.npz -> my_races_2.npz, ...
             k = 2
@@ -300,11 +304,13 @@ def open_pad(window=None):
 
 
 def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str | None = None,
-         core: str | None = None, audio: bool = True):
+         core: str | None = None, audio: bool = True, league: str = "knight", loop_first: bool = False):
+    """``loop_first``: after each finish, save the race and go straight back to the league's first
+    grid (Mute City I for Knight League), for back-to-back runs of one course."""
     import pyglet
     from pyglet.window import key
 
-    s = Session(rom, core)
+    s = Session(rom, core, league)
     h, w = s.frame.shape[:2]
     win = pyglet.window.Window(w * scale, h * scale, caption="F-Zero: teach the fly  (Esc = save & quit)")
     keys = key.KeyStateHandler()
@@ -312,7 +318,7 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str |
     pad = open_pad(win)
     sound = open_audio(s.game, audio)
     mapping = parse_map(pad_map)
-    state = {"scale": scale, "back_was_down": False}
+    state = {"scale": scale, "back_was_down": False, "finished_for": 0}
 
     def restart():
         s.finish_race()
@@ -358,6 +364,12 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str |
                 restart()
             state["back_was_down"] = back
         s.step(pressed)
+        if loop_first and s.game.info.get("lap", 0) >= 5:
+            state["finished_for"] += 1
+            if state["finished_for"] > 240:  # 4 s of the results screen, then the next run
+                print(f"race {len(s.races) + 1} finished, back to the grid")
+                state["finished_for"] = 0
+                restart()
         if sound is not None:
             sound.push(s.game.pop_audio())
         if max_frames and len(s.masks) >= max_frames:
@@ -450,12 +462,15 @@ def main(argv=None):
     ap.add_argument("--controller-test", action="store_true")
     ap.add_argument("--core", help="snes9x libretro core (.dll/.so/.dylib) instead of stable-retro")
     ap.add_argument("--no-audio", action="store_true")
+    ap.add_argument("--mute-city", action="store_true", help="back-to-back Mute City I runs")
+    ap.add_argument("--queen-league", action="store_true", help="race the Queen League Grand Prix")
     ap.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.controller_test:
         controller_test()
     else:
-        play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio)
+        play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio,
+             "queen" if a.queen_league else "knight", a.mute_city)
 
 
 if __name__ == "__main__":

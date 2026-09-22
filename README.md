@@ -242,6 +242,12 @@ nothing to configure. On Linux/macOS controllers number their buttons differentl
 `--map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"` (the default is the Linux Xbox layout). On Linux
 the controller must be readable by your user, which it normally is for the logged-in user.
 
+Handy flags:
+* `--mute-city`: back-to-back Mute City I runs. After each finish the race is saved and you're
+  put straight back on the grid.
+* `--queen-league`: the menus pick the Queen League (Mute City II, Port Town I, Red Canyon I,
+  White Land I, White Land II).
+
 Game sound plays while you record (`--no-audio` to mute). To race the whole Grand Prix, just
 keep driving through the results screens. Every attempt is kept, and a new session never
 overwrites an old file (`my_races_2.npz`, ...). The file holds only your button presses (a few hundred KB) plus sync

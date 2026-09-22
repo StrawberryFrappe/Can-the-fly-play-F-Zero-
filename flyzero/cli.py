@@ -237,6 +237,9 @@ def main(argv=None):
     r.add_argument("--controller-test", action="store_true", help="show what each controller button reports")
     r.add_argument("--core", help="snes9x libretro core (.dll on Windows) instead of stable-retro")
     r.add_argument("--no-audio", action="store_true", help="don't play the game sound")
+    r.add_argument("--mute-city", action="store_true",
+                   help="back-to-back Mute City I: after each finish, straight back to the grid")
+    r.add_argument("--queen-league", action="store_true", help="race the Queen League Grand Prix")
     r.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
 
     def _record(a):
@@ -245,7 +248,8 @@ def main(argv=None):
             return record.controller_test()
         if not a.rom:
             sys.exit("--rom is required")
-        record.play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio)
+        record.play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio,
+                    "queen" if a.queen_league else "knight", a.mute_city)
     r.set_defaults(func=_record)
 
     rp = sub.add_parser("replay", help="check that a recording replays exactly here")

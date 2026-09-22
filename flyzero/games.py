@@ -42,9 +42,18 @@ class FZero:
     menu = [("wait", 240), ("START", 6), ("wait", 120), ("START", 6), ("wait", 90)] + [
         step for _ in range(8) for step in (("B", 6), ("wait", 54))
     ]
+    LEAGUES = ("knight", "queen", "king")
+
+    @classmethod
+    def menu_for(cls, league: str = "knight") -> list:
+        """Menu macro for a league: the league screen is up after the first B (car confirmed)."""
+        k = cls.LEAGUES.index(league)
+        m = list(cls.menu)
+        at = m.index(("B", 6)) + 2  # after the first B and its wait
+        return m[:at] + [step for _ in range(k) for step in (("DOWN", 6), ("wait", 14))] + m[at:]
 
     def __init__(self, rom: str | Path, state: str | Path | None = None, skip_menu: bool = False,
-                 core: str | Path | None = None):
+                 core: str | Path | None = None, league: str = "knight"):
         """``core``: path to a snes9x libretro core (.dll/.so/.dylib) to use instead of
         stable-retro, e.g. on Windows. Used automatically if stable-retro isn't installed."""
         rom = Path(rom)
@@ -76,6 +85,7 @@ class FZero:
             self.data = stable_retro.data.GameData()
             self.em.configure_data(self.data)
             self.backend = "stable-retro"
+        self.menu = self.menu_for(league)
         self.state = Path(state).read_bytes() if state else None
         self.skip_menu = skip_menu or state is not None
         self.frame_no = 0

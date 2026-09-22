@@ -74,6 +74,10 @@ The confirmations pick: Grand Prix → Blue Falcon (default) → Knight League /
 **B is also the accelerator**, so surplus B presses during the countdown do no harm. ✅ (verified
 by a contact sheet of every 60th frame).
 
+* Screen order behind the B presses: car spec (confirm Blue Falcon) → **league select** (cursor
+  on Knight) → class → track intro. For Queen / King League, press DOWN once / twice on the
+  league screen, i.e. after the first B (`FZero.menu_for("queen")`). Verified: Queen opens on
+  Mute City II (orange sunset sky), King on Mute City III.
 * The macro ends at emulator frame ~942, during the "READY" countdown.
 * The race clock starts about 60 frames later.
 * We save a state at frame 942 (`--save-state start.state`) and start every experiment from it.
