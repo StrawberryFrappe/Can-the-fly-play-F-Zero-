@@ -45,6 +45,8 @@ class MotionParams:
     transient_gain: float = 0.0  # ON: Mi1, Tm3   OFF: Tm1, Tm2, Tm4
     sustained_gain: float = 0.0  # ON: Mi4        OFF: Mi9, Tm9
     surround: int = 3            # sampling points, radius of the contrast surround
+    # colour: R7 (UV-sensitive; blue channel as proxy) and R8 (green channel) photoreceptors
+    chromatic_gain: float = 0.0
 
 
 # subtype -> direction in eye coordinates ("front" = towards the midline)
@@ -79,6 +81,15 @@ class MotionEye:
                 chan.append(np.array([f"{pol}:{direction}"] * len(cells)))
         if not idx:
             raise ValueError("connectome has no T4/T5 neurons")
+        if p.chromatic_gain > 0:
+            for cell_type, feature in (("R7", "blue"), ("R8", "green")):
+                cells = conn.find(cell_type)
+                if len(cells) == 0:
+                    continue
+                px, py, side, keep = retinotopy(conn, cells, self.w, self.h, p.overlap)
+                cells, px, py, side = cells[keep], px[keep], py[keep], side[keep]
+                idx.append(cells); xs.append(px); ys.append(py); sides.append(side)
+                chan.append(np.array([f"col:{feature}"] * len(cells)))
         if p.transient_gain > 0 or p.sustained_gain > 0:
             for cell_type, feature in COLUMNAR.items():
                 cells = conn.find(cell_type)
@@ -119,12 +130,13 @@ class MotionEye:
 
     def describe(self) -> str:
         n_col = sum(len(v) for k, v in self._map.items() if k[0] == "col")
-        return (f"{len(self.idx) - n_col} T4/T5 motion detectors + {n_col} medulla columnar cells "
+        return (f"{len(self.idx) - n_col} T4/T5 motion detectors + {n_col} photoreceptor/medulla cells "
                 f"({(self.side == 'left').sum()} left, {(self.side == 'right').sum()} right)")
 
-    def _grid(self, frame: np.ndarray) -> np.ndarray:
+    def _grid(self, frame: np.ndarray, channel: int | None = None) -> np.ndarray:
         c = self.p.cell
-        lum = frame[: self.gh * c, : self.gw * c].astype(np.float32).mean(2) / 255.0
+        img = frame[: self.gh * c, : self.gw * c].astype(np.float32)
+        lum = (img.mean(2) if channel is None else img[..., channel]) / 255.0
         return lum.reshape(self.gh, c, self.gw, c).mean((1, 3))
 
     def see(self, frame: np.ndarray) -> np.ndarray:
@@ -165,6 +177,9 @@ class MotionEye:
             con = lum - sur
             feats["on_sustained"] = p.sustained_gain * np.maximum(con, 0)
             feats["off_sustained"] = p.sustained_gain * np.maximum(-con, 0)
+        if p.chromatic_gain > 0:
+            feats["blue"] = p.chromatic_gain * self._grid(frame, 2)
+            feats["green"] = p.chromatic_gain * self._grid(frame, 1)
         for key, sel in self._map.items():
             if key[0] == "col":
                 if key[1] in feats:
