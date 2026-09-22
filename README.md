@@ -201,6 +201,33 @@ Useful flags:
 It runs at about 4–7 game frames per second on 4 CPU cores. Bring your own ROM, dumped from a
 cartridge you own.
 
+## Teach the fly: record your own races
+
+The fly learns best from a good driver. Play F-Zero yourself and send the recording:
+
+```bash
+pip install -e .                      # Linux x86-64 or macOS (Apple Silicon); on Windows use WSL2
+flyzero record --rom "F-Zero (USA).sfc" --out my_races.npz
+```
+
+A window opens, the menus run by themselves, and you get control on the Mute City I grid.
+
+| Key | Action |
+|---|---|
+| arrows | steer |
+| X | accelerate (B) |
+| Z | brake (Y) |
+| C | super jet (A) |
+| A / S | lean L / R |
+| Enter | pause |
+| Backspace | restart the race |
+| Esc | save & quit |
+
+Every attempt is kept. The file holds only your button presses (a few hundred KB) plus sync
+checkpoints, not the ROM or any video. `flyzero replay --rom ... my_races.npz` re-runs it and
+checks the checkpoints. The emulator is deterministic, so the race replays frame for frame on
+any machine with the same stable-retro version (pinned to 1.0.1).
+
 ## Tests
 
 ```bash

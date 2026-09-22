@@ -228,6 +228,20 @@ def main(argv=None):
     le.add_argument("--out", default="learn")
     le.set_defaults(func=cmd_learn)
 
+    r = sub.add_parser("record", help="play F-Zero yourself; your inputs become the fly's lessons")
+    r.add_argument("--rom", required=True)
+    r.add_argument("--out", default="my_races.npz")
+    r.add_argument("--scale", type=int, default=3)
+    r.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
+    r.set_defaults(func=lambda a: __import__("flyzero.record", fromlist=["play"]).play(
+        a.rom, a.out, a.scale, a.max_frames))
+
+    rp = sub.add_parser("replay", help="check that a recording replays exactly here")
+    rp.add_argument("--rom", required=True)
+    rp.add_argument("recording")
+    rp.set_defaults(func=lambda a: [print(i, __import__("flyzero.record", fromlist=["replay"]).replay(
+        a.rom, a.recording, i)) for i in range(int(np.load(a.recording)["n_races"]))])
+
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":
         args.drive = ["DNp09=60"]

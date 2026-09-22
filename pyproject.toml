@@ -16,7 +16,8 @@ dependencies = [
     "Pillow",
     "imageio",
     "imageio-ffmpeg",
-    "stable-retro",
+    "stable-retro==1.0.1",  # recordings replay exactly only on the same emulator core
+    "pyglet<2",
 ]
 
 [project.optional-dependencies]
