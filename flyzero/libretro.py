@@ -50,6 +50,11 @@ class Libretro:
     def __init__(self, core: str | Path, rom: str | Path):
         if Libretro._loaded:
             raise RuntimeError("one libretro core per process")
+        # Windows (Python 3.8+) won't look up a bare DLL name in the current folder: use a full
+        # path, and let the core's own folder resolve any DLLs it depends on
+        core = Path(core).resolve()
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(str(core.parent))
         self.lib = C.CDLL(str(core))
         L = self.lib
         L.retro_serialize_size.restype = C.c_size_t
@@ -166,7 +171,7 @@ def find_core() -> str | None:
         return env
     for name in ("snes9x_libretro.dll", "snes9x_libretro.so", "snes9x_libretro.dylib"):
         if Path(name).exists():
-            return name
+            return str(Path(name).resolve())
     try:
         import importlib.util
         spec = importlib.util.find_spec("stable_retro")
