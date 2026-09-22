@@ -206,9 +206,22 @@ cartridge you own.
 The fly learns best from a good driver. Play F-Zero yourself and send the recording:
 
 ```bash
-pip install -e .                      # Linux x86-64 or macOS (Apple Silicon); on Windows use WSL2
+pip install -e .
 flyzero record --rom "F-Zero (USA).sfc" --out my_races.npz
 ```
+
+**On Windows** (native, no WSL). stable-retro has no Windows build, so flyzero loads a snes9x
+libretro core directly (`flyzero/libretro.py`, verified bit-identical to stable-retro's core):
+
+1. Install 64-bit Python 3.10+ from python.org, then in the repo folder: `pip install -e .`
+2. Get `snes9x_libretro.dll`: it's in RetroArch's `cores` folder if you use RetroArch
+   (Online Updater → Core Downloader → Nintendo - SNES / SFC (Snes9x)), or download
+   `snes9x_libretro.dll.zip` from https://buildbot.libretro.com/nightly/windows/x86_64/latest/
+3. Record:
+   ```
+   python -m flyzero record --rom "F-Zero (USA).sfc" --core C:\path\to\snes9x_libretro.dll --out my_races.npz
+   ```
+   (or copy the .dll into the folder you run from and leave out `--core`).
 
 A window opens, the menus run by themselves, and you get control on the Mute City I grid.
 

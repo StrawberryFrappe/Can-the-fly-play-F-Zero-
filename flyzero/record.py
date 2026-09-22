@@ -5,8 +5,11 @@
 A window opens, the usual menu macro runs (Grand Prix, Blue Falcon, Knight League, Beginner,
 Mute City I), and you get control at the start line. Every frame's buttons are saved, plus a
 few checkpoints of the game state, so the race can be replayed exactly on another machine
-running the same emulator core (stable-retro's snes9x). Only your inputs are saved, not the
-ROM or any video.
+running the same emulator core (snes9x). Only your inputs are saved, not the ROM or any video.
+
+Windows: stable-retro has no Windows build, so point --core at a snes9x libretro core
+(snes9x_libretro.dll from RetroArch's "cores" folder or the libretro buildbot), or just put the
+.dll next to where you run the command.
 
 Controls. Xbox controller (first one found):
 
@@ -84,9 +87,10 @@ def mask_to_buttons(mask: np.ndarray) -> dict:
 class Session:
     """Game + recording logic, independent of the window (so it can be tested headless)."""
 
-    def __init__(self, rom: str):
+    def __init__(self, rom: str, core: str | None = None):
         self.rom = rom
-        self.game = FZero(rom)
+        self.game = FZero(rom, core=core)
+        print(f"emulator: {self.game.backend}")
         self.races = []
         self.sha1 = hashlib.sha1(Path(rom).read_bytes()).hexdigest()
         self.new_race()
@@ -148,11 +152,12 @@ def open_pad(window=None):
     return pad
 
 
-def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str | None = None):
+def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str | None = None,
+         core: str | None = None):
     import pyglet
     from pyglet.window import key
 
-    s = Session(rom)
+    s = Session(rom, core)
     h, w = s.frame.shape[:2]
     win = pyglet.window.Window(w * scale, h * scale, caption="F-Zero: teach the fly  (Esc = save & quit)")
     keys = key.KeyStateHandler()
@@ -229,12 +234,12 @@ def controller_test(seconds: float = 60.0):
     pyglet.app.run()
 
 
-def replay(rom: str, recording: str, race: int = 0, on_frame=None) -> dict:
+def replay(rom: str, recording: str, race: int = 0, on_frame=None, core: str | None = None) -> dict:
     """Re-run a recorded race here; returns frames' count and whether the checkpoints matched."""
     d = np.load(recording)
     masks = d[f"race{race}_masks"]
     checks = {int(f): (int(lap), int(seg)) for f, lap, seg in d[f"race{race}_checks"]}
-    game = FZero(rom)
+    game = FZero(rom, core=core)
     game.reset()
     mismatches = 0
     for i, m in enumerate(masks, start=1):
@@ -257,12 +262,13 @@ def main(argv=None):
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--map", help='controller button numbers, e.g. "A=0,B=1,X=2,LB=4,RB=5"')
     ap.add_argument("--controller-test", action="store_true")
+    ap.add_argument("--core", help="snes9x libretro core (.dll/.so/.dylib) instead of stable-retro")
     ap.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.controller_test:
         controller_test()
     else:
-        play(a.rom, a.out, a.scale, a.max_frames, a.map)
+        play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core)
 
 
 if __name__ == "__main__":

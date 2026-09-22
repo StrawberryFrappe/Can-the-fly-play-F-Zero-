@@ -43,20 +43,39 @@ class FZero:
         step for _ in range(8) for step in (("B", 6), ("wait", 54))
     ]
 
-    def __init__(self, rom: str | Path, state: str | Path | None = None, skip_menu: bool = False):
-        import stable_retro
-
+    def __init__(self, rom: str | Path, state: str | Path | None = None, skip_menu: bool = False,
+                 core: str | Path | None = None):
+        """``core``: path to a snes9x libretro core (.dll/.so/.dylib) to use instead of
+        stable-retro, e.g. on Windows. Used automatically if stable-retro isn't installed."""
         rom = Path(rom)
         if not rom.exists():
             raise FileNotFoundError(rom)
-        if rom.suffix.lower() != ".sfc":  # the core is picked by extension
-            self._tmp = tempfile.TemporaryDirectory()
-            dst = Path(self._tmp.name) / "fzero.sfc"
-            shutil.copy(rom, dst)
-            rom = dst
-        self.em = stable_retro.RetroEmulator(str(rom))
-        self.data = stable_retro.data.GameData()
-        self.em.configure_data(self.data)
+        if core is None:
+            try:
+                import stable_retro
+            except ImportError:
+                from .libretro import find_core
+
+                core = find_core()
+                if core is None:
+                    raise RuntimeError("no emulator: install stable-retro, or pass --core with a "
+                                       "snes9x_libretro core (.dll on Windows)") from None
+        if core is not None:
+            from .libretro import Libretro
+
+            self.em = Libretro(core, rom)
+            self.data = None
+            self.backend = f"libretro ({Path(core).name})"
+        else:
+            if rom.suffix.lower() != ".sfc":  # stable-retro picks the core by extension
+                self._tmp = tempfile.TemporaryDirectory()
+                dst = Path(self._tmp.name) / "fzero.sfc"
+                shutil.copy(rom, dst)
+                rom = dst
+            self.em = stable_retro.RetroEmulator(str(rom))
+            self.data = stable_retro.data.GameData()
+            self.em.configure_data(self.data)
+            self.backend = "stable-retro"
         self.state = Path(state).read_bytes() if state else None
         self.skip_menu = skip_menu or state is not None
         self.frame_no = 0
@@ -89,6 +108,8 @@ class FZero:
         Path(path).write_bytes(bytes(self.em.get_state()))
 
     def ram(self) -> np.ndarray:
+        if self.data is None:
+            return self.em.wram()
         self.data.update_ram()
         return np.frombuffer(bytes(self.data.memory.blocks[0x7E0000]), np.uint8)
 

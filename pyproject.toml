@@ -16,7 +16,8 @@ dependencies = [
     "Pillow",
     "imageio",
     "imageio-ffmpeg",
-    "stable-retro==1.0.1",  # recordings replay exactly only on the same emulator core
+    # emulator; no Windows build, where flyzero loads a snes9x libretro .dll instead (--core)
+    "stable-retro==1.0.1; sys_platform != 'win32'",
     "pyglet<2",
 ]
 

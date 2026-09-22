@@ -235,6 +235,7 @@ def main(argv=None):
     r.add_argument("--scale", type=int, default=3)
     r.add_argument("--map", help='controller button numbers, e.g. "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"')
     r.add_argument("--controller-test", action="store_true", help="show what each controller button reports")
+    r.add_argument("--core", help="snes9x libretro core (.dll on Windows) instead of stable-retro")
     r.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
 
     def _record(a):
@@ -243,7 +244,7 @@ def main(argv=None):
             return record.controller_test()
         if not a.rom:
             sys.exit("--rom is required")
-        record.play(a.rom, a.out, a.scale, a.max_frames, a.map)
+        record.play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core)
     r.set_defaults(func=_record)
 
     rp = sub.add_parser("replay", help="check that a recording replays exactly here")

@@ -128,3 +128,24 @@ def test_xbox_mapping():
     m2 = parse_map("A=1,B=0")
     pressed = [False] * 11; pressed[1] = True
     assert pad_to_buttons(pressed, 0, 0, 0.0, m2)["B"]  # remapped A still means gas
+
+
+@pytest.mark.skipif(not os.environ.get("FLYZERO_ROM"), reason="set FLYZERO_ROM to an F-Zero ROM")
+def test_libretro_backend_matches_stable_retro(tmp_path):
+    """The ctypes frontend (used on Windows) must reproduce stable-retro frame for frame."""
+    import subprocess
+    import sys
+
+    from flyzero.libretro import find_core
+
+    core = find_core()
+    if core is None:
+        pytest.skip("no snes9x core found")
+    code = ("import sys, numpy as np; from flyzero.games import FZero; "
+            "g = FZero(sys.argv[1], core=None if sys.argv[2] == '-' else sys.argv[2]); g.reset(); "
+            "log = [(g.step({'B': True, 'LEFT': i % 90 < 20}), g.info['segment'], g.info['speed'])[1:] "
+            "for i in range(600)]; np.save(sys.argv[3], np.array(log))")
+    for name, c in (("a", "-"), ("b", core)):
+        subprocess.run([sys.executable, "-c", code, os.environ["FLYZERO_ROM"], c, str(tmp_path / name)],
+                       check=True)
+    np.testing.assert_array_equal(np.load(tmp_path / "a.npy"), np.load(tmp_path / "b.npy"))
