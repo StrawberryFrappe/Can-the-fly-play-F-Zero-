@@ -35,6 +35,7 @@ BUTTONS = ["B", "Y", "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT", "A", "X",
 class MotorParams:
     tau_ms: float = 80.0          # smoothing of DN rates
     steer_threshold: float = 10.0  # Hz, |left - right| DNa02 rate to push the D-pad
+    steer_bias: float = 0.0       # Hz added to (left - right), calibrates a resting asymmetry
     lean_threshold: float = 10.0  # Hz, DNa01 difference to lean
     accel_threshold: float = 5.0  # Hz, DNp09 rate to hold the throttle
     brake_threshold: float = 15.0
@@ -69,7 +70,7 @@ class MotorReadout:
             inst = counts[idx].mean() * 1000.0 / window_ms if len(idx) else 0.0
             self.rates[name] += a * (inst - self.rates[name])
         r, p = self.rates, self.p
-        steer = r["steer_left"] - r["steer_right"]
+        steer = r["steer_left"] - r["steer_right"] + p.steer_bias
         lean = r["lean_left"] - r["lean_right"]
         b = {k: False for k in BUTTONS}
         b["LEFT"] = steer > p.steer_threshold

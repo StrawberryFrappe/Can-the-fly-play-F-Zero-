@@ -40,6 +40,7 @@ class MotionParams:
     tau_delay: float = 2.0    # frames, low-pass "delay" arm of the correlator
     shift: int = 1            # sampling points between correlator arms
     overlap: float = 0.1      # binocular overlap (fraction of screen width)
+    y_min: float = 0.0        # ignore the top of the screen (fraction of height), e.g. the sky
 
 
 # subtype -> direction in eye coordinates ("front" = towards the midline)
@@ -127,5 +128,6 @@ class MotionEye:
         rates = np.zeros(len(self.idx), np.float32)
         for key, sel in self._map.items():
             rates[sel] = motion[key][self.gy[sel], self.gx[sel]]
+        rates[self.py < p.y_min * self.h] = 0.0
         self.last_rates = (p.max_rate * np.clip(p.gain * rates, 0, 1)).astype(np.float32)
         return self.last_rates

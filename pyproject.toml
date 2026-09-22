@@ -21,6 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+fast = ["numba"]
+tune = ["cma", "numba"]
 
 [project.scripts]
 flyzero = "flyzero.cli:main"

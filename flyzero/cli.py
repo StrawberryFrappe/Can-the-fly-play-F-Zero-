@@ -142,6 +142,14 @@ def cmd_play(args):
             print(f"wrote {args.trace}")
 
 
+def cmd_tune(args):
+    from .tune import search
+
+    best = search(args.rom, args.state, args.frames, args.generations, args.popsize, args.workers,
+                  Path(args.out), flip=args.flip, seed=args.seed)
+    print("best:", best)
+
+
 def cmd_download(args):
     print(f"downloading FlyWire v783 connectome to {args.data_dir}")
     cx.download(args.data_dir, force=args.force)
@@ -189,6 +197,18 @@ def main(argv=None):
     p.add_argument("--log-every", type=int, default=60)
     p.add_argument("--seed", type=int, default=0)
     p.set_defaults(func=cmd_play)
+
+    t = sub.add_parser("tune", help="calibrate the interface (brain stays fixed) for race progress")
+    t.add_argument("--rom", required=True)
+    t.add_argument("--state", required=True, help="start-line save state")
+    t.add_argument("--frames", type=int, default=2400)
+    t.add_argument("--generations", type=int, default=20)
+    t.add_argument("--popsize", type=int, default=8)
+    t.add_argument("--workers", type=int, default=4)
+    t.add_argument("--flip", action="store_true", help="swap left/right at the motor side")
+    t.add_argument("--out", default="tune.json")
+    t.add_argument("--seed", type=int, default=0)
+    t.set_defaults(func=cmd_tune)
 
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":

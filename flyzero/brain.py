@@ -11,8 +11,9 @@ counts, predicts sensorimotor circuits in the real fly:
 Sensory neurons are driven with Poisson spike trains whose events add a large
 kick (``f_poisson * w_syn``) directly to the membrane potential.
 
-Everything is plain NumPy/SciPy. Spikes are sparse, so each step only touches
-the rows of the weight matrix belonging to neurons that fired.
+Spikes are sparse, so each step only touches the rows of the weight matrix
+belonging to neurons that fired. With numba installed the whole time loop runs
+as one compiled kernel (several times faster); otherwise plain NumPy.
 """
 
 from __future__ import annotations
@@ -21,6 +22,44 @@ from dataclasses import dataclass
 
 import numpy as np
 import scipy.sparse as sp
+
+try:
+    import numba
+except ImportError:  # pragma: no cover
+    numba = None
+
+
+def _kernel(steps, t, n_delay, v, g, ref, pending, counts, indptr, indices, data,
+            input_idx, p_in, kick, decay_syn, decay_m, v_rest, v_th, v_reset, n_ref, seed):
+    np.random.seed(seed)
+    n = v.shape[0]
+    for _ in range(steps):
+        slot = t % n_delay
+        buf = pending[slot]
+        for i in range(n):
+            g[i] = g[i] * decay_syn + buf[i]
+            buf[i] = 0.0
+            if ref[i] > 0:
+                ref[i] -= 1
+            else:
+                v[i] += (g[i] - (v[i] - v_rest)) * decay_m
+        for j in range(input_idx.shape[0]):
+            if np.random.random() < p_in[j]:
+                v[input_idx[j]] += kick
+        for i in range(n):
+            if v[i] >= v_th and ref[i] <= 0:
+                v[i] = v_reset
+                ref[i] = n_ref
+                counts[i] += 1
+                # lands n_delay steps from now, i.e. in this same ring slot
+                for k in range(indptr[i], indptr[i + 1]):
+                    buf[indices[k]] += data[k]
+        t += 1
+    return t
+
+
+if numba is not None:
+    _kernel = numba.njit(cache=True, fastmath=True)(_kernel)
 
 
 @dataclass
@@ -38,8 +77,10 @@ class LIFParams:
 
 
 class Brain:
-    def __init__(self, weights: sp.csr_matrix, params: LIFParams | None = None, seed: int = 0):
+    def __init__(self, weights: sp.csr_matrix, params: LIFParams | None = None, seed: int = 0,
+                 backend: str = "auto"):
         self.p = p = params or LIFParams()
+        self.backend = ("numba" if numba is not None else "numpy") if backend == "auto" else backend
         w = sp.csr_matrix(weights, dtype=np.float32)
         w.sort_indices()
         self.n = w.shape[0]
@@ -88,6 +129,14 @@ class Brain:
         p = self.p
         counts = np.zeros(self.n, np.int32)
         p_in = self.input_rate * (p.dt / 1000.0)
+        if self.backend == "numba":
+            self.t = _kernel(steps, self.t, self.n_delay, self.v, self.g, self.ref, self.pending,
+                             counts, self.indptr, self.indices, self.data, self.input_idx,
+                             p_in.astype(np.float64), self.kick, self.decay_syn, self.decay_m,
+                             np.float32(p.v_rest), np.float32(p.v_th), np.float32(p.v_reset),
+                             np.int16(self.n_ref), int(self.rng.integers(2**31)))
+            self.spike_count += counts
+            return counts
         for _ in range(steps):
             slot = self.t % self.n_delay
             # synaptic input arriving now

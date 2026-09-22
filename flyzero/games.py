@@ -22,6 +22,12 @@ from .motor import BUTTONS
 SNES_FPS = 60.0988
 
 
+# F-Zero (USA) work RAM ($7E0000-) addresses, found by searching RAM traces
+RAM_SPEED = 0x0B20    # u16, ~2000 at full speed in the Blue Falcon
+RAM_SEGMENT = 0x0D00  # u8, track segment of the player, 0 .. ~58 on Mute City I, resets at the line
+RAM_LAP = 0x0CF3      # u8, laps completed
+
+
 class FZero:
     """F-Zero on snes9x (stable-retro core), controlled frame by frame.
 
@@ -49,6 +55,8 @@ class FZero:
             shutil.copy(rom, dst)
             rom = dst
         self.em = stable_retro.RetroEmulator(str(rom))
+        self.data = stable_retro.data.GameData()
+        self.em.configure_data(self.data)
         self.state = Path(state).read_bytes() if state else None
         self.skip_menu = skip_menu or state is not None
         self.frame_no = 0
@@ -63,6 +71,7 @@ class FZero:
 
     def reset(self, on_frame=None) -> np.ndarray:
         self.frame_no = 0
+        self.info = {}
         if self.state is not None:
             self.em.set_state(self.state)
         frame = self._press({})
@@ -77,9 +86,26 @@ class FZero:
     def save_state(self, path: str | Path):
         Path(path).write_bytes(bytes(self.em.get_state()))
 
+    def ram(self) -> np.ndarray:
+        self.data.update_ram()
+        return np.frombuffer(bytes(self.data.memory.blocks[0x7E0000]), np.uint8)
+
+    @staticmethod
+    def energy(frame: np.ndarray) -> float:
+        """POWER bar fill (0..1), read from the HUD."""
+        bar = frame[22, 176:240].astype(int)
+        return float(((bar[:, 0] > 180) & (bar[:, 2] > 180) & (bar[:, 1] < 235)).mean())
+
     def step(self, buttons: dict[str, bool]) -> np.ndarray:
         frame = self._press(buttons)
-        self.info = {"frame": self.frame_no}
+        ram = self.ram()
+        lap, seg = int(ram[RAM_LAP]), int(ram[RAM_SEGMENT])
+        speed = int(ram[RAM_SPEED]) | int(ram[RAM_SPEED + 1]) << 8
+        energy = self.energy(frame)
+        stalled = self.info.get("stalled", 0) + 1 if speed < 100 and self.frame_no > 200 else 0
+        self.info = {"frame": self.frame_no, "lap": lap, "segment": seg, "speed": speed,
+                     "energy": round(energy, 2), "stalled": stalled,
+                     "done": lap >= 5 or stalled > 240}
         return frame
 
 
