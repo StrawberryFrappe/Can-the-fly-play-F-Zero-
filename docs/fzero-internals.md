@@ -42,6 +42,11 @@ wram = np.frombuffer(bytes(data.memory.blocks[0x7E0000]), np.uint8)   # 128 KB, 
 Speed with no agent attached: about **740 emulated frames/s** on one CPU core, including a RAM
 read every frame.
 
+**Portability:** button inputs replay bit-exactly across snes9x builds (Windows buildbot .dll →
+stable-retro's Linux core, verified on 9 human races), but **save states do not**: a state
+saved by one build loads without error in another and then desyncs immediately. Store inputs
+plus a reproducible start (power-on + menu macro), not save states.
+
 **Determinism:** replaying the same button sequence from the same save state reproduces the
 same run exactly. That made search-based drivers (try each option from a save state, keep the
 best) practical.

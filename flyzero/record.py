@@ -419,11 +419,18 @@ def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None)
     ``on_frame(race, frame, buttons, info)`` sees every frame."""
     d = np.load(recording)
     lap_addr = int(d["check_lap_addr"]) if "check_lap_addr" in d else 0x0CF3  # older recordings
-    game = FZero(rom, core=core)
+    league = str(d["league"]) if "league" in d else "knight"
+    game = FZero(rom, core=core, league=league)
+    power_on = bytes(game.em.get_state())
     results = []
     for race in range(int(d["n_races"])):
-        start = None
-        if f"race{race}_start_state" in d:
+        if "league" in d:
+            # every race of a new-style recording starts from power-on + the menu macro. Rebuild
+            # that here rather than loading the stored save state: save states from a different
+            # snes9x build (e.g. the Windows .dll) don't load cleanly, button inputs replay fine
+            game.em.set_state(power_on)
+            game.reset()
+        elif f"race{race}_start_state" in d:
             game.em.set_state(d[f"race{race}_start_state"].tobytes())
             game.frame_no, game.info = 0, {}
             game._last_move = game._empty = 0
