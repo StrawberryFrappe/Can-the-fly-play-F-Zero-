@@ -228,15 +228,16 @@ A window opens, the menus run by themselves, and you get control on the Mute Cit
 | F-Zero | Xbox controller | Keyboard |
 |---|---|---|
 | steer | D-pad or left stick | arrows |
-| accelerate (B) | A | X |
+| accelerate (B) | RT or A | X |
 | super jet (A) | B | C |
-| brake (Y) | X | Z |
+| brake (Y) | LT or X | Z |
 | lean L / R | LB / RB | A / S |
 | pause | Start | Enter |
 | restart the race | View/Back | Backspace |
 | save & quit | — | Esc |
 
-Controllers number their buttons differently on each OS. If a button does the wrong thing, run
+On Windows the controller is read through XInput (fixed layout, analog triggers), so there is
+nothing to configure. On Linux/macOS controllers number their buttons differently: if a button does the wrong thing, run
 `flyzero record --controller-test`, press each button to see its number, then pass them in:
 `--map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"` (the default is the Linux Xbox layout). On Linux
 the controller must be readable by your user, which it normally is for the logged-in user.

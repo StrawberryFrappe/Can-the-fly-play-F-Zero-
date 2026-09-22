@@ -11,9 +11,9 @@ Windows: stable-retro has no Windows build, so point --core at a snes9x libretro
 (snes9x_libretro.dll from RetroArch's "cores" folder or the libretro buildbot), or just put the
 .dll next to where you run the command.
 
-Controls. Xbox controller (first one found):
+Controls. Xbox controller (first one found; on Windows read through XInput):
 
-    D-pad / left stick  steer      A  gas          B  super jet     X  brake
+    D-pad / left stick  steer      RT or A  gas    LT or X  brake    B  super jet
     LB / RB             lean L / R Start  pause    View/Back  restart the race
 
 Keyboard (works at the same time):
@@ -23,8 +23,9 @@ Keyboard (works at the same time):
     Enter    pause (START)    Backspace  restart the race     Esc  save and quit
     F        toggle window size
 
-Controllers number their buttons differently per OS. Run with --controller-test to see what
-each button reports, then pass e.g. --map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6".
+On Linux/macOS controllers number their buttons differently; run with --controller-test to see
+what each button reports, then pass e.g. --map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6".
+(Windows uses XInput, where the layout is fixed.)
 
 Everything you play is saved: each attempt is one "race" in the file. Only needs numpy,
 pyglet and stable-retro (no connectome, no brain).
@@ -63,12 +64,15 @@ def parse_map(text: str | None) -> dict:
     return m
 
 
-def pad_to_buttons(buttons, hat_x: float, hat_y: float, stick_x: float, mapping: dict) -> dict:
-    """Xbox controller state -> SNES buttons (the user's layout)."""
+def pad_to_buttons(buttons, hat_x: float, hat_y: float, stick_x: float, mapping: dict,
+                   lt: float = 0.0, rt: float = 0.0) -> dict:
+    """Xbox controller state -> SNES buttons (the user's layout). Triggers are 0..1."""
     def down(name):
         i = mapping.get(name)
         return i is not None and i < len(buttons) and bool(buttons[i])
     out = {snes: down(xbox) for xbox, snes in XBOX_TO_SNES.items()}
+    out["B"] = out["B"] or rt > 0.3   # RT = gas
+    out["Y"] = out["Y"] or lt > 0.3   # LT = brake
     out["LEFT"] = hat_x < -0.5 or stick_x < -0.5 or down("DPAD_LEFT")
     out["RIGHT"] = hat_x > 0.5 or stick_x > 0.5 or down("DPAD_RIGHT")
     out["UP"] = hat_y > 0.5 or down("DPAD_UP")
@@ -131,8 +135,71 @@ class Session:
         print(f"saved {len(self.races)} race(s) to {out}")
 
 
+# XInput (Windows): fixed layout, separate analog triggers
+XI_BUTTONS = {"DPAD_UP": 0x0001, "DPAD_DOWN": 0x0002, "DPAD_LEFT": 0x0004, "DPAD_RIGHT": 0x0008,
+              "START": 0x0010, "BACK": 0x0020, "LB": 0x0100, "RB": 0x0200,
+              "A": 0x1000, "B": 0x2000, "X": 0x4000, "Y": 0x8000}
+XI_ORDER = list(XI_BUTTONS)  # index = position in this list, used as the "mapping"
+
+
+def xinput_to_buttons(wbuttons: int, lt: int, rt: int, lx: int) -> tuple[dict, bool]:
+    """Raw XInput state -> (SNES buttons, View/Back pressed)."""
+    flags = [bool(wbuttons & XI_BUTTONS[k]) for k in XI_ORDER]
+    mapping = {k: i for i, k in enumerate(XI_ORDER)}
+    out = pad_to_buttons(flags, 0.0, 0.0, lx / 32767.0, mapping, lt / 255.0, rt / 255.0)
+    return out, bool(wbuttons & XI_BUTTONS["BACK"])
+
+
+class XInputPad:
+    """Xbox controller on Windows via xinput1_4/xinput9_1_0 (no pyglet needed)."""
+
+    def __init__(self):
+        import ctypes as C
+
+        class Gamepad(C.Structure):
+            _fields_ = [("wButtons", C.c_ushort), ("bLeftTrigger", C.c_ubyte), ("bRightTrigger", C.c_ubyte),
+                        ("sThumbLX", C.c_short), ("sThumbLY", C.c_short),
+                        ("sThumbRX", C.c_short), ("sThumbRY", C.c_short)]
+
+        class State(C.Structure):
+            _fields_ = [("dwPacketNumber", C.c_uint), ("Gamepad", Gamepad)]
+
+        for dll in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+            try:
+                self.lib = getattr(C.windll, dll)
+                break
+            except OSError:
+                continue
+        else:
+            raise OSError("no XInput dll")
+        self.state = State()
+        self.C = C
+        self.index = next((i for i in range(4) if self._poll(i)), None)
+        if self.index is None:
+            raise OSError("no XInput controller connected")
+
+    def _poll(self, i):
+        return self.lib.XInputGetState(i, self.C.byref(self.state)) == 0
+
+    def read(self) -> tuple[dict, bool]:
+        if not self._poll(self.index):
+            return {}, False
+        g = self.state.Gamepad
+        return xinput_to_buttons(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX)
+
+
 def open_pad(window=None):
+    import sys
+
     import pyglet
+
+    if sys.platform == "win32":
+        try:
+            pad = XInputPad()
+            print(f"controller: XInput pad #{pad.index}")
+            return pad
+        except OSError as e:
+            print(f"XInput: {e}; trying DirectInput")
 
     try:
         pads = pyglet.input.get_joysticks()
@@ -193,11 +260,19 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str |
 
     def tick(dt):
         pressed = {btn: bool(keys[getattr(key, name)]) for name, btn in KEYMAP.items() if hasattr(key, name)}
-        if pad is not None:
-            p = pad_to_buttons(pad.buttons, pad.hat_x, pad.hat_y, pad.x, mapping)
-            pressed = {b: pressed.get(b, False) or p.get(b, False) for b in set(pressed) | set(p)}
+        if isinstance(pad, XInputPad):
+            p, back = pad.read()
+        elif pad is not None:
+            # triggers: separate axes (Linux: z = LT, rz = RT); measured against their resting value
+            z, rz = getattr(pad, "z", 0.0), getattr(pad, "rz", 0.0)
+            rest = state.setdefault("trigger_rest", (z, rz))
+            lt = max(0.0, (z - rest[0]) / max(1.0 - rest[0], 1e-6))
+            rt = max(0.0, (rz - rest[1]) / max(1.0 - rest[1], 1e-6))
+            p = pad_to_buttons(pad.buttons, pad.hat_x, pad.hat_y, pad.x, mapping, lt, rt)
             back = mapping.get("BACK") is not None and mapping["BACK"] < len(pad.buttons) \
                 and bool(pad.buttons[mapping["BACK"]])
+        if pad is not None:
+            pressed = {b: pressed.get(b, False) or p.get(b, False) for b in set(pressed) | set(p)}
             if back and not state["back_was_down"]:
                 restart()
             state["back_was_down"] = back
@@ -223,8 +298,12 @@ def controller_test(seconds: float = 60.0):
     last = {}
 
     def tick(dt):
-        now = {"buttons": [i for i, v in enumerate(pad.buttons) if v],
-               "hat": (pad.hat_x, pad.hat_y), "stick": (round(pad.x, 1), round(pad.y, 1))}
+        if isinstance(pad, XInputPad):
+            now = {"snes": sorted(k for k, v in pad.read()[0].items() if v)}
+        else:
+            now = {"buttons": [i for i, v in enumerate(pad.buttons) if v],
+                   "hat": (pad.hat_x, pad.hat_y), "stick": (round(pad.x, 1), round(pad.y, 1)),
+                   "triggers z/rz": (round(getattr(pad, "z", 0), 1), round(getattr(pad, "rz", 0), 1))}
         if now != last:
             print(now, flush=True)
             last.clear(); last.update(now)

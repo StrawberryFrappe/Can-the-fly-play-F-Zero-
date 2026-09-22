@@ -125,6 +125,10 @@ def test_xbox_mapping():
     assert not (b["A"] or b["Y"] or b["RIGHT"] or b["R"])
     b = pad_to_buttons([False] * 11, 0, 0, stick_x=0.9, mapping=m)
     assert b["RIGHT"]                                  # left stick steers too
+    b = pad_to_buttons([False] * 11, 0, 0, 0.0, m, lt=0.9, rt=0.0)
+    assert b["Y"] and not b["B"]                       # LT = brake
+    b = pad_to_buttons([False] * 11, 0, 0, 0.0, m, lt=0.0, rt=1.0)
+    assert b["B"] and not b["Y"]                       # RT = gas
     m2 = parse_map("A=1,B=0")
     pressed = [False] * 11; pressed[1] = True
     assert pad_to_buttons(pressed, 0, 0, 0.0, m2)["B"]  # remapped A still means gas
@@ -149,3 +153,14 @@ def test_libretro_backend_matches_stable_retro(tmp_path):
         subprocess.run([sys.executable, "-c", code, os.environ["FLYZERO_ROM"], c, str(tmp_path / name)],
                        check=True)
     np.testing.assert_array_equal(np.load(tmp_path / "a.npy"), np.load(tmp_path / "b.npy"))
+
+
+def test_xinput_decoding():
+    from flyzero.record import XI_BUTTONS, xinput_to_buttons
+
+    b, back = xinput_to_buttons(XI_BUTTONS["DPAD_LEFT"] | XI_BUTTONS["RB"] | XI_BUTTONS["B"], 0, 255, 0)
+    assert b["LEFT"] and b["R"] and b["A"] and b["B"] and not back   # B button = boost, RT = gas
+    b, back = xinput_to_buttons(XI_BUTTONS["X"] | XI_BUTTONS["BACK"], 0, 0, 30000)
+    assert b["Y"] and b["RIGHT"] and back                              # X = brake, stick right, View
+    b, _ = xinput_to_buttons(0, 200, 0, 0)
+    assert b["Y"] and not b["B"]                                       # LT = brake
