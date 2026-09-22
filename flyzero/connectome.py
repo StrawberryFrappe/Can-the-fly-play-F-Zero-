@@ -33,9 +33,9 @@ import scipy.sparse as sp
 
 DEFAULT_DATA_DIR = Path(os.environ.get("FLYZERO_DATA", Path.home() / ".cache" / "flyzero"))
 
-SHIU = "https://github.com/philshiu/Drosophila_brain_model/raw/main/"
+SHIU = "https://raw.githubusercontent.com/philshiu/Drosophila_brain_model/main/"
 ANNOT = (
-    "https://github.com/flyconnectome/flywire_annotations/raw/main/"
+    "https://raw.githubusercontent.com/flyconnectome/flywire_annotations/main/"
     "supplemental_files/Supplemental_file1_neuron_annotations.tsv"
 )
 FILES = {
