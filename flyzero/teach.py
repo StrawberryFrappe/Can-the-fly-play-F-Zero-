@@ -49,7 +49,8 @@ def build_lessons(rom: str, recordings: list[str], out: str):
 
 
 def _worker(args):
-    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth = args
+    (k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth,
+     practice, practice_frames, reward_eta, init) = args
     from . import connectome as cx
     from .biology import corrected
     from .brain import Brain, LIFParams
@@ -75,6 +76,9 @@ def _worker(args):
     eye = MotionEye(conn, (224, 256), MotionParams(gain=10 ** v.pop("log_gain"), **v))
     motor = MotorReadout(conn, MotorParams())
     plast = InstructedPlasticity(brain, conn, InstructParams(eta=eta))
+    if init:  # continue from an earlier taught fly
+        st = np.load(init)
+        plast.load({"pos": st["pos"], "data": st["data"]})
     drive = conn.find("DNp09")
     flight = np.concatenate([conn.find(t) for t in ("DNa02", "DNg02*", "DNa01")])
     window = 1000.0 / game.fps
@@ -95,23 +99,29 @@ def _worker(args):
         brain.set_input(eye.idx, eye.see(frame))
         return brain.run(window)
 
-    def run_exam():
-        frame = start(exam)
-        prog = Progress()
-        agree = 0
-        for i in range(exam_frames):
-            counts = think(frame)
-            plast.step(counts, None, window, learn=False)
-            buttons = motor.update(counts, window)
-            frame = game.step(buttons)
-            prog.update(game.info["segment"], i)
-            if game.info["done"]:
-                break
-        return {"progress": prog.total, "lap": game.info["lap"], "frames": i + 1,
-                "energy": game.info["energy"]}
+    def run_exam(n=3):
+        """Mean over n solo drives (spiking noise differs each time): single runs vary a lot."""
+        runs = []
+        for _ in range(n):
+            frame = start(exam)
+            prog = Progress()
+            for i in range(exam_frames):
+                counts = think(frame)
+                plast.step(counts, None, window, learn=False)
+                buttons = motor.update(counts, window)
+                frame = game.step(buttons)
+                prog.update(game.info["segment"], i)
+                if game.info["done"]:
+                    break
+            runs.append({"progress": prog.total, "lap": game.info["lap"], "frames": i + 1})
+        return {"mean_progress": round(float(np.mean([r["progress"] for r in runs])), 1),
+                "best": max(r["progress"] for r in runs), "mean_frames": int(np.mean([r["frames"] for r in runs])),
+                "laps": max(r["lap"] for r in runs)}
 
     res = run_exam()
     print(json.dumps({"fly": k, "eta": eta, "epoch": 0, "exam": res}), flush=True)
+    with open(log, "a") as f:
+        f.write(json.dumps({"fly": k, "eta": eta, "epoch": 0, "exam": res}) + "\n")
     for epoch in range(1, epochs + 1):
         t = time.time()
         errs = []
@@ -141,12 +151,49 @@ def _worker(args):
             f.write(json.dumps(rec) + "\n")
         np.savez(Path(out) / f"taught_fly{k}_epoch{epoch}.npz", **plast.state())
 
+    if practice:
+        # practice: the fly drives alone; reward (progress / crashes / reversing, damage felt as
+        # heat) keeps shaping the same motor synapses the lessons shaped
+        from .learning import LearnParams, Reward, RewardPlasticity
+
+        rp = RewardPlasticity(brain, conn, LearnParams(eta=reward_eta), seed=k)
+        heat = conn.find("TRN_VP2")
+        for ep in range(1, practice + 1):
+            t = time.time()
+            frame = start(exam)
+            reward, prog, total, hurt = Reward(rp.p), Progress(), 0.0, 0.0
+            for i in range(practice_frames):
+                nidx, nrate = rp.exploration(window)
+                brain.set_input(np.r_[eye.idx, nidx, heat],
+                                np.r_[eye.see(frame), nrate, np.full(len(heat), rp.p.hurt_hz if hurt > 0 else 0.0)])
+                hurt -= window
+                counts = brain.run(window)
+                buttons = motor.update(counts, window)
+                frame = game.step(buttons)
+                r = reward(game.info)
+                if reward.parts["crash"] > 0:
+                    hurt = rp.p.hurt_ms
+                total += r
+                rp.step(counts, r, window)
+                prog.update(game.info["segment"], i)
+                if game.info["done"]:
+                    break
+            rec = {"fly": k, "eta": eta, "practice": ep, "progress": prog.total, "frames": i + 1,
+                   "reward": round(total, 1), "mins": round((time.time() - t) / 60, 1)}
+            if ep % 5 == 0:
+                rec["exam"] = run_exam()
+                np.savez(Path(out) / f"taught_fly{k}_practice{ep}.npz", **plast.state())
+            print(json.dumps(rec), flush=True)
+            with open(log, "a") as f:
+                f.write(json.dumps(rec) + "\n")
+
 
 def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), bias_mv=7.8,
-          mirror=True, smooth=15.0):
+          mirror=True, smooth=15.0, practice=0, practice_frames=2400, reward_eta=5e-4, init=None):
     """``smooth``: teach the teacher's intention smoothed over this many frames (0 = exact taps)."""
     Path(out).mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
     with ctx.Pool(len(etas)) as pool:
-        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth)
+        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth,
+                            practice, practice_frames, reward_eta, init)
                            for k, eta in enumerate(etas)])
