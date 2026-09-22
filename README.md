@@ -84,6 +84,21 @@ territory.
   3. A tonic 60 Hz Poisson drive to DNp09, like optogenetically activating a fly that wants to
      walk. Otherwise the car never moves. Turn it off with `--drive none`.
 
+### Calibrating the interface, not the fly
+
+To get the fly around the track, `flyzero tune` searches the interface settings with CMA-ES:
+* visual gain;
+* how much of the upper screen is hidden from the fly;
+* steering threshold, bias and smoothing;
+* lean threshold;
+* the walking drive.
+
+The brain is never modified. Think of it as fitting the fly's goggles and controller, not
+rewiring the fly.
+
+F-Zero memory addresses, HUD pixels and menu timings are in
+[docs/fzero-internals.md](docs/fzero-internals.md).
+
 ### Findings along the way
 
 * **Photoreceptors don't work as an input.** Driving all 10,582 photoreceptors activates about
