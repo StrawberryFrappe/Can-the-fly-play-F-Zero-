@@ -25,23 +25,31 @@ def build_lessons(rom: str, recordings: list[str], out: str):
     """Replay every recording once (in its own process) and save each race's start + inputs."""
     from .record import replay_all
 
+    from .games import FZero
+
     data, k = {}, 0
     for rec in recordings:
-        for r in replay_all(rom, rec):
+        racing = {}
+        results = replay_all(rom, rec, on_frame=lambda race, frame, b, info:
+                             racing.setdefault(race, []).append(FZero.racing(frame)))
+        for r in results:
             if r["mismatches"]:
                 print(f"skipping {rec} race {r['race']}: {r['mismatches']} checkpoint mismatches")
                 continue
             data[f"l{k}_state"] = np.frombuffer(r["start_state"], np.uint8)
             data[f"l{k}_masks"] = np.load(rec)[f"race{r['race']}_masks"]
+            data[f"l{k}_racing"] = np.array(racing[r["race"]], bool)
+            data[f"l{k}_league"] = np.array(str(np.load(rec)["league"]) if "league" in np.load(rec) else "knight")
             data[f"l{k}_name"] = np.array(f"{Path(rec).stem}#{r['race']}")
-            print(f"lesson {k}: {Path(rec).stem} race {r['race']}, {r['frames']} frames, laps {r['laps']}")
+            print(f"lesson {k}: {Path(rec).stem} race {r['race']}, {r['frames']} frames "
+                  f"({int(np.sum(racing[r['race']]))} racing), laps {r['laps']}")
             k += 1
     data["n"] = k
     np.savez_compressed(out, **data)
 
 
 def _worker(args):
-    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, flight_hz = args
+    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, flight_hz, mirror = args
     from . import connectome as cx
     from .biology import corrected
     from .brain import Brain, LIFParams
@@ -54,7 +62,11 @@ def _worker(args):
 
     conn = corrected(cx.load())
     L = np.load(lessons_path)
-    lessons = [(L[f"l{i}_state"].tobytes(), L[f"l{i}_masks"], str(L[f"l{i}_name"])) for i in range(int(L["n"]))]
+    lessons = [(L[f"l{i}_state"].tobytes(), L[f"l{i}_masks"], str(L[f"l{i}_name"]),
+                L[f"l{i}_racing"] if f"l{i}_racing" in L else np.ones(len(L[f"l{i}_masks"]), bool))
+               for i in range(int(L["n"]))]
+    rng = np.random.default_rng(k)
+    SWAP = {"LEFT": "RIGHT", "RIGHT": "LEFT", "L": "R", "R": "L"}
     exam = Path(exam_state).read_bytes()
     game = FZero(rom, skip_menu=True)
     brain = Brain(conn.weights, LIFParams(dt=0.25), seed=100 + k)
@@ -100,12 +112,15 @@ def _worker(args):
     for epoch in range(1, epochs + 1):
         t = time.time()
         errs = []
-        for state, masks, name in lessons:
+        for state, masks, name, racing in lessons:
+            flip = mirror and rng.random() < 0.5  # mirror world: flipped view, swapped buttons
             frame = start(state)
-            for m in masks:
+            for m, is_racing in zip(masks, racing):
                 teacher = mask_to_buttons(m)
-                counts = think(frame)
-                errs.append(plast.step(counts, teacher, window))
+                seen = frame[:, ::-1] if flip else frame
+                lesson = {SWAP.get(b, b): v for b, v in teacher.items()} if flip else teacher
+                counts = think(np.ascontiguousarray(seen))
+                errs.append(plast.step(counts, lesson if is_racing else None, window))
                 motor.update(counts, window)
                 frame = game.step(teacher)
         res = run_exam()
@@ -117,9 +132,10 @@ def _worker(args):
         np.savez(Path(out) / f"taught_fly{k}_epoch{epoch}.npz", **plast.state())
 
 
-def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), flight_hz=30.0):
+def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), flight_hz=30.0,
+          mirror=True):
     Path(out).mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
     with ctx.Pool(len(etas)) as pool:
-        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, flight_hz)
+        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, flight_hz, mirror)
                            for k, eta in enumerate(etas)])

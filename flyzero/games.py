@@ -138,6 +138,11 @@ class FZero:
         return np.frombuffer(bytes(self.data.memory.blocks[0x7E0000]), np.uint8)
 
     @staticmethod
+    def racing(frame: np.ndarray) -> bool:
+        """The race HUD is up (both edges of the POWER bar are white): not a menu/results screen."""
+        return bool((frame[22, 175] >= 240).all() and (frame[22, 240] >= 240).all())
+
+    @staticmethod
     def energy(frame: np.ndarray) -> float:
         """POWER bar fill (0..1), read from the HUD."""
         bar = frame[22, 176:240].astype(int)
