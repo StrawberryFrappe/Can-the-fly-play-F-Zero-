@@ -149,13 +149,13 @@ def load_flywire(data_dir: Path = DEFAULT_DATA_DIR) -> Connectome:
     ann = ann.drop_duplicates(best).set_index(best)
 
     neurons = pd.DataFrame({"root_id": root_ids})
-    for col in ["super_class", "cell_class", "cell_type", "hemibrain_type", "side",
+    for col in ["super_class", "cell_class", "cell_type", "hemibrain_type", "side", "top_nt",
                 "pos_x", "pos_y", "pos_z"]:
         if col in ann:
             neurons[col] = ann[col].reindex(root_ids).to_numpy()
         else:
             neurons[col] = np.nan
-    for col in ["super_class", "cell_class", "cell_type", "hemibrain_type", "side"]:
+    for col in ["super_class", "cell_class", "cell_type", "hemibrain_type", "side", "top_nt"]:
         neurons[col] = neurons[col].astype("string")
     return Connectome(weights, neurons, name="FlyWire v783")
 
