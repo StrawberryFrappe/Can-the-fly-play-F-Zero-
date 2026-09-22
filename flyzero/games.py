@@ -25,7 +25,7 @@ SNES_FPS = 60.0988
 # F-Zero (USA) work RAM ($7E0000-) addresses, found by searching RAM traces
 RAM_SPEED = 0x0B20    # u16, ~2000 at full speed in the Blue Falcon
 RAM_SEGMENT = 0x0D00  # u8, track segment of the player, 0 .. ~58 on Mute City I, resets at the line
-RAM_LAP = 0x0CF3      # u8, laps completed
+RAM_LAP = 0x0F53      # u8, laps completed (0..5; 5 = race finished)
 
 
 class FZero:

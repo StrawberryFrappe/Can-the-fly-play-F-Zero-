@@ -87,12 +87,14 @@ behaviour. Offsets are from `$7E0000`.
 |---|---|---|---|---|
 | `$7E0B20` | u16 LE | player speed | 0 at rest; rises to ~2,000–2,150 at Blue Falcon top speed under B; decays when coasting; drops on wall hits | 🟡 (matches HUD km/h trend; the unit→km/h factor is not pinned down, roughly ÷4.6) |
 | `$7E0D00` | u8 | player track segment | 0 → 58 over one lap of Mute City I (**59 segments**), resets at the finish line; decreases when driving the wrong way | ✅ |
-| `$7E0CF3` | u8 | laps completed | 0 → 1 exactly when "4 LAPS LEFT" appears | ✅ |
-| `$7E0F53`, `$7E10D5` | u8 | also increment at the lap line | same frame as `$0CF3`; probably lap-related copies/flags | ❓ |
+| `$7E0F53` | u8 | **laps completed** | 0 → 5, +1 at each finish-line crossing; 5 = race finished. Verified on a full human race (crossings at frames 1935, 3730, 5385, 7146, 8859) | ✅ |
+| `$7E0CF3` | u8 | lap-related flag, **not** a lap counter | 0→1 at the first lap line, then toggles between 0 and 1 during later laps (an earlier version of these notes got this wrong) | ❓ |
+| `$7E097B`, `$7E0A23` | u8 | count up from lap 2 onward and keep counting on the results screen | not a clean lap counter | ❓ |
 | `$7E1164`, `$7E1168`, `$7E0D08` | u8 | segment-like counters | track the same range as `$0D00`, slightly offset; likely other racers or sub-positions | ❓ |
 | `$7E0055` | u8 | changes 2 → 3 early in the race | probably a game-state/phase byte | ❓ |
 
-**Lap timing reference.** A greedy search driver (always B; left/straight/right picked by
+**Lap timing reference.** A human race (Blue Falcon, Beginner, no boosts to speak of) finished
+5 laps in 8,859 frames (2'27"), about 30 s per lap. A greedy search driver (always B; left/straight/right picked by
 maximum speed 40 frames ahead) crossed the line at frame 2,154 after the start-line state. That
 was a first lap of about 0'30"8 on Beginner, running 3rd.
 
