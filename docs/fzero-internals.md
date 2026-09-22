@@ -109,8 +109,11 @@ was a first lap of about 0'30"8 on Beginner, running 3rd.
 | Sky colour | `(104, 144, 248)` at the top rows | handy for "is the HUD visible" checks |
 
 Energy drains on guard-beam contact. At zero you get "POWER DOWN", then the machine explodes
-and "YOU LOST" appears (about 1 s later). Speed then stays 0, which `FZero.step` reports as
-`done` after 240 stalled frames.
+and "YOU LOST" appears (about 1 s later). Afterwards `$0B20` stays stuck at **512**, not 0, so
+detect the crash by track progress instead: `FZero.step` reports `done` after 600 frames without
+a segment change.
+
+| Road surface colour (Mute City I) | exactly `(144, 160, 160)` RGB. Useful for road-segmentation drivers and teachers |
 
 ## Race rules that matter for agents
 

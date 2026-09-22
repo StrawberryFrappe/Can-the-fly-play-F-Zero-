@@ -72,6 +72,7 @@ class FZero:
     def reset(self, on_frame=None) -> np.ndarray:
         self.frame_no = 0
         self.info = {}
+        self._last_move = 0
         if self.state is not None:
             self.em.set_state(self.state)
         frame = self._press({})
@@ -102,10 +103,13 @@ class FZero:
         lap, seg = int(ram[RAM_LAP]), int(ram[RAM_SEGMENT])
         speed = int(ram[RAM_SPEED]) | int(ram[RAM_SPEED + 1]) << 8
         energy = self.energy(frame)
-        stalled = self.info.get("stalled", 0) + 1 if speed < 100 and self.frame_no > 200 else 0
+        # no track progress for a while = crashed out ("YOU LOST" leaves speed stuck at 512)
+        if seg != self.info.get("segment") or lap != self.info.get("lap"):
+            self._last_move = self.frame_no
+        stalled = self.frame_no - getattr(self, "_last_move", 0)
         self.info = {"frame": self.frame_no, "lap": lap, "segment": seg, "speed": speed,
                      "energy": round(energy, 2), "stalled": stalled,
-                     "done": lap >= 5 or stalled > 240}
+                     "done": lap >= 5 or stalled > 600}
         return frame
 
 
