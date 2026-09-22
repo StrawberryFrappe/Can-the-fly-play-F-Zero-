@@ -127,7 +127,13 @@ class Session:
     def save(self, out: str):
         self.finish_race()
         data = {"rom_sha1": self.sha1, "buttons": np.array(BUTTONS), "n_races": len(self.races),
-                "menu": np.array(repr(FZero.menu))}
+                "menu": np.array(repr(FZero.menu)), "check_lap_addr": RAM_LAP}
+        out = Path(out)
+        if out.exists():  # never overwrite earlier sessions: my_races.npz -> my_races_2.npz, ...
+            k = 2
+            while out.with_name(f"{out.stem}_{k}{out.suffix}").exists():
+                k += 1
+            out = out.with_name(f"{out.stem}_{k}{out.suffix}")
         for i, r in enumerate(self.races):
             for k, v in r.items():
                 data[f"race{i}_{k}"] = v
@@ -318,6 +324,7 @@ def replay(rom: str, recording: str, race: int = 0, on_frame=None, core: str | N
     d = np.load(recording)
     masks = d[f"race{race}_masks"]
     checks = {int(f): (int(lap), int(seg)) for f, lap, seg in d[f"race{race}_checks"]}
+    lap_addr = int(d["check_lap_addr"]) if "check_lap_addr" in d else 0x0CF3  # older recordings
     game = FZero(rom, core=core)
     game.reset()
     mismatches = 0
@@ -328,7 +335,7 @@ def replay(rom: str, recording: str, race: int = 0, on_frame=None, core: str | N
             on_frame(frame, buttons, game.info)
         if i in checks:
             ram = game.ram()
-            if (int(ram[RAM_LAP]), int(ram[RAM_SEGMENT])) != checks[i]:
+            if (int(ram[lap_addr]), int(ram[RAM_SEGMENT])) != checks[i]:
                 mismatches += 1
     return {"frames": len(masks), "checkpoints": len(checks), "mismatches": mismatches,
             "laps": game.info.get("lap"), "segment": game.info.get("segment")}
