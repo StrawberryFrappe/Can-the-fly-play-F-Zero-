@@ -80,11 +80,25 @@ class FZero:
         self.skip_menu = skip_menu or state is not None
         self.frame_no = 0
         self.info: dict = {}
+        self.collect_audio = False
+        self._audio = []
+
+    def audio_rate(self) -> float:
+        return float(self.em.get_audio_rate())
+
+    def pop_audio(self) -> np.ndarray:
+        """Game sound since the last call (stereo int16), if ``collect_audio`` is on."""
+        out = np.concatenate(self._audio) if self._audio else np.zeros((0, 2), np.int16)
+        self._audio = []
+        return out
 
     def _press(self, buttons: dict[str, bool]) -> np.ndarray:
         mask = np.array([buttons.get(b, False) for b in BUTTONS], np.uint8)
         self.em.set_button_mask(mask, 0)
         self.em.step()
+        a = self.em.get_audio()  # always drain, so the buffer can't grow
+        if self.collect_audio:
+            self._audio.append(np.asarray(a, np.int16).reshape(-1, 2))
         self.frame_no += 1
         return self.em.get_screen().copy()
 

@@ -164,3 +164,18 @@ def test_xinput_decoding():
     assert b["Y"] and b["RIGHT"] and back                              # X = brake, stick right, View
     b, _ = xinput_to_buttons(0, 200, 0, 0)
     assert b["Y"] and not b["B"]                                       # LT = brake
+
+
+def test_audio_resampling_and_lag_cap():
+    from flyzero.record import AudioOut
+
+    a = AudioOut(32040, 48000, start=False)
+    frame = (np.sin(np.arange(534) / 10)[:, None] * 8000).repeat(2, 1).astype(np.int16)
+    a.push(frame)
+    assert abs(a.queued - 534 * 48000 / 32040) < 2          # resampled to the device rate
+    out = np.zeros((256, 2), np.int16)
+    a._callback(out, 256, None, None)
+    assert np.abs(out).max() > 1000                         # sound comes out
+    for _ in range(100):
+        a.push(frame)
+    assert a.queued <= 48000 // 10 + 900                    # never more than ~0.1 s behind

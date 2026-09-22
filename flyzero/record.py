@@ -14,20 +14,22 @@ Windows: stable-retro has no Windows build, so point --core at a snes9x libretro
 Controls. Xbox controller (first one found; on Windows read through XInput):
 
     D-pad / left stick  steer      RT or A  gas    LT or X  brake    B  super jet
-    LB / RB             lean L / R Start  pause    View/Back  restart the race
+    LB / RB             lean L / R Start  pause    View/Back  back to the Mute City grid
 
 Keyboard (works at the same time):
 
     arrows   steer            X  accelerate (B)      Z  brake (Y)
     C        super jet (A)    A  lean left (L)       S  lean right (R)
-    Enter    pause (START)    Backspace  restart the race     Esc  save and quit
+    Enter    pause (START)    Backspace  back to the Mute City grid     Esc  save and quit
     F        toggle window size
 
 On Linux/macOS controllers number their buttons differently; run with --controller-test to see
 what each button reports, then pass e.g. --map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6".
 (Windows uses XInput, where the layout is fixed.)
 
-Everything you play is saved: each attempt is one "race" in the file. Only needs numpy,
+Everything you play is saved: each attempt is one "race" in the file. To race the whole Grand
+Prix, just keep driving through the results screens. Game sound plays if `sounddevice` is
+installed (--no-audio to mute). Only needs numpy,
 pyglet and stable-retro (no connectome, no brain).
 """
 
@@ -97,9 +99,13 @@ class Session:
         print(f"emulator: {self.game.backend}")
         self.races = []
         self.sha1 = hashlib.sha1(Path(rom).read_bytes()).hexdigest()
+        self.power_on = bytes(self.game.em.get_state())
         self.new_race()
 
     def new_race(self):
+        """Back to the Mute City I grid from power-on (to race the whole Grand Prix, just keep
+        driving through the results screens instead)."""
+        self.game.em.set_state(self.power_on)
         self.frame = self.game.reset()
         self.start_state = bytes(self.game.em.get_state())
         self.masks = []
@@ -118,6 +124,7 @@ class Session:
         if len(self.masks) > 60:
             info = self.game.info
             self.races.append({"masks": np.array(self.masks, np.uint8),
+                               "start_state": np.frombuffer(self.start_state, np.uint8),
                                "checks": np.array(self.checks, np.int32).reshape(-1, 3),
                                "laps": info.get("lap", 0), "segment": info.get("segment", 0),
                                "energy": info.get("energy", 0.0)})
@@ -194,6 +201,73 @@ class XInputPad:
         return xinput_to_buttons(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX)
 
 
+class AudioOut:
+    """Plays the game's sound: resampled to the device rate, kept at most ~0.1 s behind."""
+
+    def __init__(self, in_rate: float, out_rate: int = 48000, start: bool = True):
+        import collections
+        import threading
+
+        self.in_rate, self.out_rate = in_rate, out_rate
+        self.chunks = collections.deque()
+        self.queued = 0
+        self.lock = threading.Lock()
+        self.stream = None
+        if start:
+            import sounddevice as sd
+
+            self.stream = sd.OutputStream(samplerate=out_rate, channels=2, dtype="int16",
+                                          callback=self._callback, latency="low")
+            self.stream.start()
+
+    def push(self, samples: np.ndarray):
+        if len(samples) == 0:
+            return
+        n_out = int(round(len(samples) * self.out_rate / self.in_rate))
+        t_in = np.arange(len(samples))
+        t_out = np.linspace(0, len(samples) - 1, n_out)
+        res = np.stack([np.interp(t_out, t_in, samples[:, ch]) for ch in (0, 1)], 1).astype(np.int16)
+        with self.lock:
+            self.chunks.append(res)
+            self.queued += len(res)
+            while self.queued > self.out_rate // 10 and len(self.chunks) > 1:  # drop, don't lag
+                self.queued -= len(self.chunks.popleft())
+
+    def _callback(self, outdata, frames, time_info, status):
+        out = np.zeros((frames, 2), np.int16)
+        filled = 0
+        with self.lock:
+            while filled < frames and self.chunks:
+                c = self.chunks[0]
+                take = min(frames - filled, len(c))
+                out[filled:filled + take] = c[:take]
+                filled += take
+                if take == len(c):
+                    self.chunks.popleft()
+                else:
+                    self.chunks[0] = c[take:]
+                self.queued -= take
+        outdata[:] = out
+
+    def close(self):
+        if self.stream is not None:
+            self.stream.stop()
+            self.stream.close()
+
+
+def open_audio(game, enabled: bool = True):
+    if not enabled:
+        return None
+    try:
+        out = AudioOut(game.audio_rate())
+        game.collect_audio = True
+        print("audio: on")
+        return out
+    except Exception as e:  # no sounddevice / no audio device / PortAudio missing
+        print(f"audio off ({e.__class__.__name__}: {e}); `pip install sounddevice` (Linux: also libportaudio2) to enable")
+        return None
+
+
 def open_pad(window=None):
     import sys
 
@@ -226,7 +300,7 @@ def open_pad(window=None):
 
 
 def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str | None = None,
-         core: str | None = None):
+         core: str | None = None, audio: bool = True):
     import pyglet
     from pyglet.window import key
 
@@ -236,6 +310,7 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str |
     keys = key.KeyStateHandler()
     win.push_handlers(keys)
     pad = open_pad(win)
+    sound = open_audio(s.game, audio)
     mapping = parse_map(pad_map)
     state = {"scale": scale, "back_was_down": False}
 
@@ -283,12 +358,16 @@ def play(rom: str, out: str, scale: int = 3, max_frames: int = 0, pad_map: str |
                 restart()
             state["back_was_down"] = back
         s.step(pressed)
+        if sound is not None:
+            sound.push(s.game.pop_audio())
         if max_frames and len(s.masks) >= max_frames:
             pyglet.app.exit()
 
     print(__doc__.split("Controls.")[1].split("Everything")[0])
     pyglet.clock.schedule_interval(tick, 1.0 / FZero.fps)
     pyglet.app.run()
+    if sound is not None:
+        sound.close()
     win.close()
     s.save(out)
 
@@ -319,26 +398,45 @@ def controller_test(seconds: float = 60.0):
     pyglet.app.run()
 
 
-def replay(rom: str, recording: str, race: int = 0, on_frame=None, core: str | None = None) -> dict:
-    """Re-run a recorded race here; returns frames' count and whether the checkpoints matched."""
+def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None) -> list[dict]:
+    """Re-run every race in a recording here and check its sync checkpoints.
+
+    Races with a saved start state start from it. Older recordings (without one) are replayed
+    in order in one emulator, like the session that made them: each race starts where the
+    previous one left off, followed by the menu macro, which is what the old restart did.
+    ``on_frame(race, frame, buttons, info)`` sees every frame."""
     d = np.load(recording)
-    masks = d[f"race{race}_masks"]
-    checks = {int(f): (int(lap), int(seg)) for f, lap, seg in d[f"race{race}_checks"]}
     lap_addr = int(d["check_lap_addr"]) if "check_lap_addr" in d else 0x0CF3  # older recordings
     game = FZero(rom, core=core)
-    game.reset()
-    mismatches = 0
-    for i, m in enumerate(masks, start=1):
-        buttons = mask_to_buttons(m)
-        frame = game.step(buttons)
-        if on_frame:
-            on_frame(frame, buttons, game.info)
-        if i in checks:
-            ram = game.ram()
-            if (int(ram[lap_addr]), int(ram[RAM_SEGMENT])) != checks[i]:
-                mismatches += 1
-    return {"frames": len(masks), "checkpoints": len(checks), "mismatches": mismatches,
-            "laps": game.info.get("lap"), "segment": game.info.get("segment")}
+    results = []
+    for race in range(int(d["n_races"])):
+        if f"race{race}_start_state" in d:
+            game.em.set_state(d[f"race{race}_start_state"].tobytes())
+            game.frame_no, game.info = 0, {}
+            game._last_move = game._empty = 0
+        else:
+            game.reset()
+        masks = d[f"race{race}_masks"]
+        checks = {int(f): (int(lap), int(seg)) for f, lap, seg in d[f"race{race}_checks"]}
+        mismatches = 0
+        for i, m in enumerate(masks, start=1):
+            buttons = mask_to_buttons(m)
+            frame = game.step(buttons)
+            if on_frame:
+                on_frame(race, frame, buttons, game.info)
+            if i in checks:
+                ram = game.ram()
+                if (int(ram[lap_addr]), int(ram[RAM_SEGMENT])) != checks[i]:
+                    mismatches += 1
+        results.append({"race": race, "frames": len(masks), "checkpoints": len(checks),
+                        "mismatches": mismatches, "laps": game.info.get("lap"),
+                        "segment": game.info.get("segment")})
+    return results
+
+
+def replay(rom: str, recording: str, race: int = 0, on_frame=None, core: str | None = None) -> dict:
+    """Check one race (replays the whole recording, since old files are sequential)."""
+    return replay_all(rom, recording, on_frame, core)[race]
 
 
 def main(argv=None):
@@ -349,12 +447,13 @@ def main(argv=None):
     ap.add_argument("--map", help='controller button numbers, e.g. "A=0,B=1,X=2,LB=4,RB=5"')
     ap.add_argument("--controller-test", action="store_true")
     ap.add_argument("--core", help="snes9x libretro core (.dll/.so/.dylib) instead of stable-retro")
+    ap.add_argument("--no-audio", action="store_true")
     ap.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.controller_test:
         controller_test()
     else:
-        play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core)
+        play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio)
 
 
 if __name__ == "__main__":

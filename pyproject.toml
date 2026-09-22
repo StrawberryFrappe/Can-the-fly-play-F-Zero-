@@ -19,6 +19,7 @@ dependencies = [
     # emulator; no Windows build, where flyzero loads a snes9x libretro .dll instead (--core)
     "stable-retro==1.0.1; sys_platform != 'win32'",
     "pyglet<2",
+    "sounddevice",  # game sound while recording (bundles PortAudio on Windows/macOS)
 ]
 
 [project.optional-dependencies]

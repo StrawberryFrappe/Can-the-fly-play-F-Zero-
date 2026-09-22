@@ -233,7 +233,7 @@ A window opens, the menus run by themselves, and you get control on the Mute Cit
 | brake (Y) | LT or X | Z |
 | lean L / R | LB / RB | A / S |
 | pause | Start | Enter |
-| restart the race | View/Back | Backspace |
+| back to the Mute City grid | View/Back | Backspace |
 | save & quit | — | Esc |
 
 On Windows the controller is read through XInput (fixed layout, analog triggers), so there is
@@ -242,7 +242,9 @@ nothing to configure. On Linux/macOS controllers number their buttons differentl
 `--map "A=0,B=1,X=2,LB=4,RB=5,START=7,BACK=6"` (the default is the Linux Xbox layout). On Linux
 the controller must be readable by your user, which it normally is for the logged-in user.
 
-Every attempt is kept. The file holds only your button presses (a few hundred KB) plus sync
+Game sound plays while you record (`--no-audio` to mute). To race the whole Grand Prix, just
+keep driving through the results screens. Every attempt is kept, and a new session never
+overwrites an old file (`my_races_2.npz`, ...). The file holds only your button presses (a few hundred KB) plus sync
 checkpoints, not the ROM or any video. `flyzero replay --rom ... my_races.npz` re-runs it and
 checks the checkpoints. The emulator is deterministic, so the race replays frame for frame on
 any machine with the same stable-retro version (pinned to 1.0.1).

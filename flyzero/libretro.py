@@ -7,8 +7,7 @@ directly, the same kind of core stable-retro wraps and RetroArch uses:
   https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip
 * Linux/macOS: ``snes9x_libretro.so`` / ``.dylib`` (stable-retro ships one in its ``cores`` dir)
 
-It implements only what F-Zero needs: video, one joypad, save states and work-RAM access.
-Audio is discarded.
+It implements only what F-Zero needs: video, audio, one joypad, save states and work-RAM access.
 """
 
 from __future__ import annotations
@@ -40,6 +39,12 @@ STATE_CB = C.CFUNCTYPE(C.c_int16, C.c_uint, C.c_uint, C.c_uint, C.c_uint)
 
 class GameInfo(C.Structure):
     _fields_ = [("path", C.c_char_p), ("data", C.c_void_p), ("size", C.c_size_t), ("meta", C.c_char_p)]
+
+
+class AVInfo(C.Structure):
+    _fields_ = [("base_width", C.c_uint), ("base_height", C.c_uint), ("max_width", C.c_uint),
+                ("max_height", C.c_uint), ("aspect_ratio", C.c_float),
+                ("fps", C.c_double), ("sample_rate", C.c_double)]
 
 
 class Libretro:
@@ -74,8 +79,9 @@ class Libretro:
         self.screen = np.zeros((224, 256, 3), np.uint8)
         self._sysdir = C.c_char_p(str(Path(rom).resolve().parent).encode())
         # keep references to the callbacks, or they get garbage-collected under the core
-        self._cbs = [ENV_CB(self._env), VIDEO_CB(self._video), AUDIO_CB(lambda l, r: None),
-                     AUDIO_BATCH_CB(lambda d, n: n), POLL_CB(lambda: None), STATE_CB(self._state)]
+        self._audio = []
+        self._cbs = [ENV_CB(self._env), VIDEO_CB(self._video), AUDIO_CB(self._sample),
+                     AUDIO_BATCH_CB(self._samples), POLL_CB(lambda: None), STATE_CB(self._state)]
         L.retro_set_environment(self._cbs[0])
         L.retro_init()
         L.retro_set_video_refresh(self._cbs[1])
@@ -130,6 +136,15 @@ class Libretro:
             img = img[::2]
         self.screen = np.ascontiguousarray(img, dtype=np.uint8)
 
+    def _sample(self, left, right):
+        self._audio.append(np.array([[left, right]], np.int16))
+
+    def _samples(self, data, frames):
+        if data and frames:
+            buf = np.ctypeslib.as_array(C.cast(data, C.POINTER(C.c_int16)), (frames * 2,))
+            self._audio.append(buf.reshape(frames, 2).copy())
+        return frames
+
     def _state(self, port, device, index, button_id):
         if port == 0 and device == DEVICE_JOYPAD and button_id < 12:
             return int(self.mask[button_id])
@@ -145,6 +160,17 @@ class Libretro:
 
     def get_screen(self):
         return self.screen
+
+    def get_audio(self) -> np.ndarray:
+        """Stereo int16 samples produced since the last call, shape (n, 2)."""
+        out = np.concatenate(self._audio) if self._audio else np.zeros((0, 2), np.int16)
+        self._audio = []
+        return out
+
+    def get_audio_rate(self) -> float:
+        info = AVInfo()
+        self.lib.retro_get_system_av_info(C.byref(info))
+        return float(info.sample_rate)
 
     def get_state(self) -> bytes:
         n = self.lib.retro_serialize_size()
