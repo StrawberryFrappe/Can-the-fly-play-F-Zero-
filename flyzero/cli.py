@@ -13,6 +13,7 @@ from . import connectome as cx
 from .brain import Brain, LIFParams
 from .eyes import CompoundEye, EyeParams
 from .motor import MotorParams, MotorReadout
+from .vision import MotionEye, MotionParams
 
 
 def parse_drive(specs: list[str], conn) -> tuple[np.ndarray, np.ndarray, list[str]]:
@@ -77,9 +78,14 @@ def cmd_play(args):
         game.save_state(args.save_state)
         print(f"saved start-line state to {args.save_state}")
 
-    eye = CompoundEye(conn, frame.shape[:2], EyeParams())
-    print(f"eyes: {len(eye.idx)} photoreceptors "
-          f"({(eye.side == 'left').sum()} left, {(eye.side == 'right').sum()} right)")
+    if args.vision == "motion" and len(conn.find("T4a")) == 0:
+        print("no T4/T5 neurons in this connectome, falling back to --vision retina")
+        args.vision = "retina"
+    if args.vision == "motion":
+        eye = MotionEye(conn, frame.shape[:2], MotionParams(gain=args.motion_gain))
+    else:
+        eye = CompoundEye(conn, frame.shape[:2], EyeParams())
+    print("eyes: " + eye.describe())
     if args.video or args.show:
         name = conn.name + (" | drive " + ", ".join(drive_desc) if drive_desc else "")
         dash = Dashboard(eye, motor, name)
@@ -159,6 +165,10 @@ def main(argv=None):
     p.add_argument("--save-state", help="save the state after the menu macro here")
     p.add_argument("--skip-menu", action="store_true", help="don't run the menu macro")
     p.add_argument("--connectome", choices=["flywire", "synthetic"], default="flywire")
+    p.add_argument("--vision", choices=["motion", "retina"], default="motion",
+                   help="motion: drive T4/T5 motion detectors (default); "
+                        "retina: drive photoreceptors (signal dies in the optic lobe)")
+    p.add_argument("--motion-gain", type=float, default=MotionParams.gain)
     p.add_argument("--frames", type=int, default=60 * 30, help="game frames to play (60 = 1 s)")
     p.add_argument("--dt", type=float, default=0.1, help="brain time step in ms")
     p.add_argument("--drive", action="append", default=None, metavar="TYPE[:side]=HZ",

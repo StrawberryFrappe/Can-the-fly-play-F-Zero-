@@ -1,4 +1,7 @@
-"""Compound eyes: turn game frames into photoreceptor firing rates.
+"""Retinotopy, and the naive eye: game frames -> photoreceptor firing rates.
+
+(The default input is ``vision.MotionEye``; see there for why driving the
+photoreceptors of a spiking model barely reaches the rest of the brain.)
 
 Each photoreceptor gets a spot in the visual field. FlyWire does not label
 ommatidial coordinates, but photoreceptor axons tile the lamina/medulla
@@ -31,58 +34,76 @@ class EyeParams:
     blur: int = 3                # ommatidium half-size in (downsampled) pixels
 
 
+def retinotopy(conn: Connectome, cells: np.ndarray, w: int, h: int, overlap: float = 0.1):
+    """Screen pixel (px, py) and eye ('left'/'right') for each neuron in ``cells``.
+
+    Per eye, the neurons' positions are projected onto the two main axes of
+    their point cloud; dorsal is up and lateral is outwards. The left eye sees
+    the left half of the screen (plus ``overlap``), the right eye the right half.
+    Returns ``px, py, side, keep`` where ``keep`` masks neurons that could be
+    placed.
+    """
+    nrn = conn.neurons.iloc[cells]
+    pos = nrn[["pos_x", "pos_y", "pos_z"]].to_numpy(float)
+    side = nrn["side"].fillna("").to_numpy().astype(object)
+    ok = np.isfinite(pos).all(1)
+    mid = np.nanmedian(conn.neurons["pos_x"].to_numpy(float))
+    # side labels missing? fall back to which side of the midline it is on
+    unknown = ~np.isin(side, ["left", "right"])
+    side = np.where(unknown, np.where(pos[:, 0] > mid, "left", "right"), side)
+
+    xy = np.full((len(cells), 2), np.nan)  # visual field, 0..1
+    for s in ("left", "right"):
+        m = (side == s) & ok
+        if m.sum() < 3:
+            continue
+        xy[m] = _field(pos[m], mid)
+    keep = np.isfinite(xy).all(1)
+    xy = np.nan_to_num(xy)
+    o = overlap / 2
+    left = side == "left"
+    # left eye covers [0, 0.5+o] of the screen, right eye [0.5-o, 1]; lateral = outer edge
+    sx = np.where(left, (1 - xy[:, 0]) * (0.5 + o), 0.5 - o + xy[:, 0] * (0.5 + o))
+    px = np.clip((sx * w).astype(int), 0, w - 1)
+    py = np.clip((xy[:, 1] * h).astype(int), 0, h - 1)
+    return px, py, side.astype(str), keep
+
+
+def _field(pos: np.ndarray, mid: float) -> np.ndarray:
+    c = pos - pos.mean(0)
+    _, _, vt = np.linalg.svd(c, full_matrices=False)
+    uv = c @ vt[:2].T
+    # vertical axis = the component best aligned with brain y (FlyWire y grows ventrally)
+    cy = [abs(np.corrcoef(uv[:, k], pos[:, 1])[0, 1]) for k in range(2)]
+    v_k = int(np.argmax(cy))
+    u = uv[:, 1 - v_k]
+    v = uv[:, v_k]
+    if np.corrcoef(v, pos[:, 1])[0, 1] < 0:
+        v = -v
+    lateral = np.abs(pos[:, 0] - mid)
+    if np.corrcoef(u, lateral)[0, 1] < 0:
+        u = -u
+    norm = lambda a: (a - a.min()) / max(np.ptp(a), 1e-9)  # noqa: E731
+    return np.c_[norm(u), norm(v)]  # u: 0 = medial, 1 = lateral; v: 0 = dorsal (top)
+
+
 class CompoundEye:
+    """Drives the photoreceptors directly (see ``vision`` for why that barely works)."""
+
     def __init__(self, conn: Connectome, frame_shape: tuple[int, int], params: EyeParams | None = None):
         self.p = params or EyeParams()
         self.h, self.w = frame_shape
-        self.idx = conn.photoreceptors()
-        if len(self.idx) == 0:
+        idx = conn.photoreceptors()
+        if len(idx) == 0:
             raise ValueError("connectome has no photoreceptors to plug the game into")
-        nrn = conn.neurons.iloc[self.idx]
-        pos = nrn[["pos_x", "pos_y", "pos_z"]].to_numpy(float)
-        side = nrn["side"].fillna("").to_numpy()
-        ok = np.isfinite(pos).all(1)
-        mid = np.nanmedian(conn.neurons["pos_x"].to_numpy(float))
-        # side labels missing? fall back to which side of the midline it is on
-        unknown = ~np.isin(side, ["left", "right"])
-        side = np.where(unknown, np.where(pos[:, 0] > mid, "left", "right"), side)
-
-        self.side = side
-        self.xy = np.full((len(self.idx), 2), np.nan)  # visual field, 0..1
-        for s in ("left", "right"):
-            m = (side == s) & ok
-            if m.sum() < 3:
-                continue
-            self.xy[m] = self._retinotopy(pos[m], s, mid)
-        keep = np.isfinite(self.xy).all(1)
-        self.idx, self.xy, self.side = self.idx[keep], self.xy[keep], self.side[keep]
-
-        o = self.p.overlap / 2
-        left = self.side == "left"
-        # left eye covers [0, 0.5+o] of the screen, right eye [0.5-o, 1]; lateral = outer edge
-        sx = np.where(left, (1 - self.xy[:, 0]) * (0.5 + o), 0.5 - o + self.xy[:, 0] * (0.5 + o))
-        self.px = np.clip((sx * self.w).astype(int), 0, self.w - 1)
-        self.py = np.clip((self.xy[:, 1] * self.h).astype(int), 0, self.h - 1)
+        px, py, side, keep = retinotopy(conn, idx, self.w, self.h, self.p.overlap)
+        self.idx, self.px, self.py, self.side = idx[keep], px[keep], py[keep], side[keep]
         self.prev = None
         self.last_rates = np.zeros(len(self.idx), np.float32)
 
-    @staticmethod
-    def _retinotopy(pos: np.ndarray, side: str, mid: float) -> np.ndarray:
-        c = pos - pos.mean(0)
-        _, _, vt = np.linalg.svd(c, full_matrices=False)
-        uv = c @ vt[:2].T
-        # vertical axis = the component best aligned with brain y (FlyWire y grows ventrally)
-        cy = [abs(np.corrcoef(uv[:, k], pos[:, 1])[0, 1]) for k in range(2)]
-        v_k = int(np.argmax(cy))
-        u = uv[:, 1 - v_k]
-        v = uv[:, v_k]
-        if np.corrcoef(v, pos[:, 1])[0, 1] < 0:
-            v = -v
-        lateral = np.abs(pos[:, 0] - mid)
-        if np.corrcoef(u, lateral)[0, 1] < 0:
-            u = -u
-        norm = lambda a: (a - a.min()) / max(np.ptp(a), 1e-9)  # noqa: E731
-        return np.c_[norm(u), norm(v)]  # u: 0 = medial, 1 = lateral; v: 0 = dorsal (top)
+    def describe(self) -> str:
+        return (f"{len(self.idx)} photoreceptors "
+                f"({(self.side == 'left').sum()} left, {(self.side == 'right').sum()} right)")
 
     def see(self, frame: np.ndarray) -> np.ndarray:
         """frame: HxWx3 uint8 -> Poisson rate (Hz) per photoreceptor."""

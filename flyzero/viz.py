@@ -48,17 +48,18 @@ class Dashboard:
         d.text((x0, y), f"{spikes:6d} spikes / frame, {n_active} neurons", fill=FG, font=self.font); y += 18
 
         # the fly's eye view: every photoreceptor as a dot where it looks
-        ew, eh = PANEL_W - 24, int((PANEL_W - 24) * h / w)
-        d.text((x0, y), "photoreceptor input", fill=DIM, font=self.font); y += 12
-        d.rectangle([x0, y, x0 + ew, y + eh], fill=(0, 0, 0))
+        ew, eh = 160, 140
+        d.text((x0, y), "visual input (" + type(self.eye).__name__ + ")", fill=DIM, font=self.font); y += 12
         r = self.eye.last_rates / max(self.eye.p.max_rate, 1)
-        ex = x0 + self.eye.px * ew // w
-        ey = y + self.eye.py * eh // h
-        eye_img = np.zeros((eh + 1, ew + 1, 3), np.uint8)
-        col = np.stack([r * 255, r * 120 + 30 * (self.eye.side == "left"), 60 + r * 195], 1).clip(0, 255)
-        eye_img[ey - y, ex - x0] = col.astype(np.uint8)
+        eye_img = np.zeros((eh, ew, 3), np.uint8)
+        col = np.stack([r * 255, r * 120 + 30 * (self.eye.side == "left"), 60 + r * 195], 1)
+        eye_img[self.eye.py * eh // h, self.eye.px * ew // w] = col.clip(0, 255).astype(np.uint8)
         img.paste(Image.fromarray(eye_img), (x0, y))
-        y += eh + 10
+        iy = y
+        for k, v in info.items():  # game info next to the eye view
+            v = f"{v:.1f}" if isinstance(v, float) else str(v)
+            d.text((x0 + ew + 8, iy), f"{k}: {v}", fill=FG, font=self.font); iy += 12
+        y += eh + 8
 
         # descending neuron rates
         d.text((x0, y), "descending neurons (Hz)", fill=DIM, font=self.font); y += 12
@@ -88,22 +89,16 @@ class Dashboard:
             d.text((bx - 3, by - 6), key, fill=BG if b.get(key) else FG, font=self.font)
         for key, bx in (("L", x0 + 10), ("R", x0 + 200)):
             d.rectangle([bx, y - 6, bx + 40, y], fill=ON if b.get(key) else (60, 60, 80))
-        y += 62
+        y += 56
 
         # population activity trace
         self.activity.append(spikes)
         d.text((x0, y), "whole-brain spikes per frame", fill=DIM, font=self.font); y += 12
-        th = 40
+        th = 30
         if self.activity:
             a = np.array(self.activity, float)
             a = a / max(a.max(), 1)
             pts = [(x0 + i, y + th - int(v * th)) for i, v in enumerate(a)]
             if len(pts) > 1:
                 d.line(pts, fill=(90, 200, 250))
-        y += th + 8
-        for k, v in info.items():
-            if y > H - 12:
-                break
-            v = f"{v:.1f}" if isinstance(v, float) else str(v)
-            d.text((x0, y), f"{k}: {v}", fill=FG, font=self.font); y += 12
         return np.asarray(img)

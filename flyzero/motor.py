@@ -34,7 +34,7 @@ BUTTONS = ["B", "Y", "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT", "A", "X",
 @dataclass
 class MotorParams:
     tau_ms: float = 80.0          # smoothing of DN rates
-    steer_threshold: float = 5.0  # Hz, |left - right| DNa02 rate to push the D-pad
+    steer_threshold: float = 10.0  # Hz, |left - right| DNa02 rate to push the D-pad
     lean_threshold: float = 10.0  # Hz, DNa01 difference to lean
     accel_threshold: float = 5.0  # Hz, DNp09 rate to hold the throttle
     brake_threshold: float = 15.0
