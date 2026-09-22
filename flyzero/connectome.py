@@ -85,12 +85,17 @@ class Connectome:
         return self.weights.shape[0]
 
     def find(self, cell_type: str, side: str | None = None) -> np.ndarray:
-        """Indices of neurons whose cell type (or hemibrain type) matches exactly."""
+        """Indices of neurons whose cell type (or hemibrain type) matches exactly.
+
+        A trailing ``*`` matches a prefix, e.g. ``DNg02*`` for DNg02_a ... DNg02_h."""
         key = cell_type.lower()
         if key not in self._type_cache:
-            m = self.neurons["cell_type"].str.lower().eq(key)
-            if "hemibrain_type" in self.neurons:
-                m |= self.neurons["hemibrain_type"].str.lower().eq(key)
+            if key.endswith("*"):
+                m = self.neurons["cell_type"].str.lower().str.startswith(key[:-1])
+            else:
+                m = self.neurons["cell_type"].str.lower().eq(key)
+                if "hemibrain_type" in self.neurons:
+                    m |= self.neurons["hemibrain_type"].str.lower().eq(key)
             self._type_cache[key] = m.to_numpy(dtype=bool, na_value=False)
         m = self._type_cache[key]
         if side is not None:
@@ -194,7 +199,7 @@ def synthetic(seed: int = 0, eye_size: int = 24, n_optic: int = 1200, n_central:
     add(n_central, "central", "CX", "center",
         np.c_[rng.normal(100_000, 5_000, n_central), rng.uniform(40_000, 50_000, n_central),
               np.zeros(n_central)])
-    dn_types = {"DNa02": 4, "DNa01": 3, "DNp09": 3, "MDN": 2, "DNp01": 1}
+    dn_types = {"DNa02": 4, "DNa01": 3, "DNg02_a": 2, "DNp09": 3, "MDN": 2, "DNp01": 1}
     for t, k in dn_types.items():
         for side, sgn in (("left", 1), ("right", -1)):
             add(k, "descending", t, side, np.c_[np.full(k, 100_000 + sgn * 3_000),

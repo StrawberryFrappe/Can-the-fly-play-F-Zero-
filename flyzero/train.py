@@ -43,6 +43,8 @@ def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=6
     eye.lp_hp = None
     reward = Reward(plast.p)
     drive = conn.find("DNp09")
+    heat = conn.find("TRN_VP2")  # antennal heat-sensing neurons: damage feels like heat
+    hurt_left = 0.0
     window = 1000.0 / game.fps
     prog = Progress()
     total_r = 0.0
@@ -50,12 +52,17 @@ def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=6
     for i in range(frames):
         rates = eye.see(frame)
         nidx, nrate = plast.exploration(window) if learn else (np.zeros(0, int), np.zeros(0))
-        brain.set_input(np.r_[eye.idx, drive, nidx], np.r_[rates, np.full(len(drive), drive_hz), nrate])
+        hurt_hz = plast.p.hurt_hz if hurt_left > 0 else 0.0
+        brain.set_input(np.r_[eye.idx, drive, nidx, heat],
+                        np.r_[rates, np.full(len(drive), drive_hz), nrate, np.full(len(heat), hurt_hz)])
+        hurt_left -= window
         counts = brain.run(window)
         buttons = motor.update(counts, window)
         frame = game.step(buttons)
         info = game.info
         r = reward(info)
+        if reward.parts["crash"] > 0:
+            hurt_left = plast.p.hurt_ms
         total_r += r
         for k, v in reward.parts.items():
             parts[k] += v

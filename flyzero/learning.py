@@ -42,7 +42,9 @@ class LearnParams:
     cap: float = 3.0              # |w| <= cap * max(|w0|, one synapse)
     noise_hz: float = 20.0        # exploratory drive to the targets (OU-modulated Poisson)
     noise_tau_ms: float = 300.0
-    targets: tuple = ("DNa02", "DNa01", "DNp09", "MDN")
+    targets: tuple = ("DNa02", "DNa01", "DNg02*", "DNp09", "MDN")
+    hurt_hz: float = 200.0        # heat-sensing neurons (TRN_VP2) driven while the car takes damage
+    hurt_ms: float = 150.0
     # reward weights
     w_speed: float = 0.2      # small: speed only counts when it moves you along the track
     w_progress: float = 20.0  # per track segment (59 per lap)
@@ -55,7 +57,8 @@ class Reward:
     """Per-frame reward from telemetry."""
     p: LearnParams
     last_seg: int | None = None
-    last_energy: float | None = None
+    floor: float | None = None      # lowest energy seen: the HUD bar flickers by a pixel
+    above: int = 0
     parts: dict = field(default_factory=dict)
 
     def __call__(self, info: dict) -> float:
@@ -63,8 +66,16 @@ class Reward:
         d = 0
         if self.last_seg is not None:
             d = (seg - self.last_seg + 29) % 59 - 29
-        lost = max(0.0, (self.last_energy if self.last_energy is not None else energy) - energy)
-        self.last_seg, self.last_energy = seg, energy
+        # damage = new lows only; a sustained rise (the pit zone) resets the floor
+        if self.floor is None:
+            self.floor = energy
+        lost = self.floor - energy if self.floor - energy > 0.021 else 0.0
+        if lost > 0:
+            self.floor = energy
+        self.above = self.above + 1 if energy > self.floor + 0.04 else 0
+        if self.above > 30:
+            self.floor, self.above = energy, 0
+        self.last_seg = seg
         speed = min(info["speed"], TOP_SPEED) / TOP_SPEED if info["speed"] != 512 or energy > 0 else 0.0
         self.parts = {"speed": speed, "fwd": max(d, 0), "rev": max(-d, 0), "crash": lost}
         return (self.p.w_speed * speed + self.p.w_progress * max(d, 0)

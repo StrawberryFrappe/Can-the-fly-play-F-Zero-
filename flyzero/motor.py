@@ -10,6 +10,9 @@ DN type        what it does in the fly                                F-Zero but
 DNa02 (L/R)    unilateral activity steers towards that side            D-pad LEFT/RIGHT
                (Rayshubskiy et al. 2020, Yang et al. 2023)
 DNa01 (L/R)    also turning-related, slower/larger heading changes      L / R (lean)
+DNg02 (L/R)    flight: wingbeat amplitude (Namiki et al. 2022). A       L / R (lean)
+               stronger right wing turns the fly left, so right>left
+               DNg02 activity leans left (our inference, not measured)
 DNp09 (P9)     drives forward walking (Bidaye et al. 2020)             B (accelerate)
 MDN            "moonwalker": drives backward walking                   Y (brake)
                (Bidaye et al. 2014)
@@ -45,6 +48,8 @@ class MotorParams:
         "steer_right": ("DNa02", "right"),
         "lean_left": ("DNa01", "left"),
         "lean_right": ("DNa01", "right"),
+        "wing_left": ("DNg02*", "left"),
+        "wing_right": ("DNg02*", "right"),
         "accelerate": ("DNp09", None),
         "brake": ("MDN", None),
         "boost": ("DNp01", None),
@@ -71,7 +76,7 @@ class MotorReadout:
             self.rates[name] += a * (inst - self.rates[name])
         r, p = self.rates, self.p
         steer = r["steer_left"] - r["steer_right"] + p.steer_bias
-        lean = r["lean_left"] - r["lean_right"]
+        lean = (r["lean_left"] - r["lean_right"]) + (r["wing_right"] - r["wing_left"])
         b = {k: False for k in BUTTONS}
         b["LEFT"] = steer > p.steer_threshold
         b["RIGHT"] = steer < -p.steer_threshold
