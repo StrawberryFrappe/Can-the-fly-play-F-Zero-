@@ -36,7 +36,8 @@ array arithmetic.
 
 * no body, muscles, senses or environment, apart from the game image we feed in and the buttons we read out;
 * no neuromodulators (dopamine, serotonin, octopamine), hormones or metabolism;
-* no learning or memory: connection strengths never change;
+* no learning or memory: connection strengths never change (the optional reward-learning
+  experiment, step 7 below, changes only ~7,300 synapses onto four motor neuron types);
 * no dendritic computation, no gap junctions and no graded (non-spiking) signalling. Much of early
   fly vision relies on graded signalling, which is why we compute that stage separately;
 * neuron properties that are identical for all 138,639 cells, whereas real neurons differ widely.
@@ -84,22 +85,64 @@ territory.
   3. A tonic 60 Hz Poisson drive to DNp09, like optogenetically activating a fly that wants to
      walk. Otherwise the car never moves. Turn it off with `--drive none`.
 
-### Calibrating the interface, not the fly
+### The road to finishing Mute City: a lab notebook
 
-To get the fly around the track, `flyzero tune` searches the interface settings with CMA-ES:
-* visual gain;
-* how much of the upper screen is hidden from the fly;
-* steering threshold, bias and smoothing;
-* lean threshold;
-* the walking drive.
+Goal: finish Mute City I (5 laps) while changing the fly as little as possible. Each step
+below was taken only after the previous one was shown not to be enough. F-Zero memory
+addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fzero-internals.md).
 
-The brain is never modified. Think of it as fitting the fly's goggles and controller, not
-rewiring the fly.
+1. **Calibrate the interface only** (`flyzero tune`). A CMA-ES search over the interface
+   settings:
+   * visual gain and how much of the upper screen the fly sees;
+   * steering threshold, bias and smoothing;
+   * the walking drive.
 
-F-Zero memory addresses, HUD pixels and menu timings are in
-[docs/fzero-internals.md](docs/fzero-internals.md).
+   The brain is untouched. **Result:** best 17 of 59 segments in 30 s, still crashing. The
+   search mostly learned to cancel a constant left pull.
+2. **Is the road in the brain at all?** Replaying footage open-loop, I decoded the road's
+   position on screen (from its exact colour) from neural activity, cross-validated in
+   contiguous time blocks:
 
-### Findings along the way
+   | Signal | r |
+   |---|---|
+   | raw pixels (linear ceiling) | 0.45 |
+   | visual projection neurons | 0.41 |
+   | all active descending neurons | 0.32 |
+   | **DNa02, the fly's steering pair** | **≈ 0** |
+
+   **The fly sees the road, but its steering neurons don't use it.** It is a fly, not a driver.
+   (A first attempt used a search driver's jittery button presses as the target. Even pixels
+   couldn't predict those, which was the tell that the target was bad, not the brain.)
+3. **Better eyes.** Added medulla columnar channels (Mi1/Tm3 ON, Tm1/Tm2/Tm4 OFF, Mi4/Mi9/Tm9
+   sustained contrast) and colour (R7 ← blue as a UV proxy, R8 ← green). Little change in
+   road information.
+4. **The model seizes.** Under strong whole-field input the plain model tips into a
+   self-sustaining whole-brain seizure: about 23,000 spikes per frame that continue after the
+   input is switched off, with most Kenyon cells firing. Some of the earlier videos, including
+   the 60 s run and its constant hard left steering, were largely a seizing brain.
+5. **Biological corrections** (`flyzero/biology.py`, each with a literature reference):
+   * dopamine, serotonin and octopamine synapses (about 2 M) have no fast effect, because these
+     act only through GPCRs in flies;
+   * Kenyon cells are cholinergic, not dopaminergic as the transmitter predictor labels them;
+   * KC→KC synapses are inhibitory (mAChR-B).
+
+   **No seizures at moderate input.**
+6. **Dopamine learning in the mushroom body**, the fly's own reward system (the user's idea:
+   reward speed, punish crashes, punish reversing even harder). Blocked: the mushroom body's
+   visual input comes through the colour pathway (aMe12, MTe cells), and even with colour eyes
+   each visual Kenyon cell gets about 0.3 mV per input spike against a 7 mV threshold. They
+   never fire without re-igniting the seizure.
+7. **Reward learning at the motor output** (`flyzero learn`, `flyzero/learning.py`). The first
+   step that changes the brain:
+   * only the ~7,300 existing FlyWire synapses onto DNa02, DNa01, DNp09 and MDN are plastic,
+     with transmitter sign kept and strength capped;
+   * the rule is exploratory-Hebbian reward modulation (Hoerzer, Legenstein & Maass 2014);
+   * the reward is +20 per track segment, −60 per segment backwards, and −100 per energy bar
+     lost.
+
+   Everything upstream stays FlyWire-exact, with the corrections from step 5.
+
+### Earlier findings
 
 * **Photoreceptors don't work as an input.** Driving all 10,582 photoreceptors activates about
   2% of the optic lobe and **zero** descending neurons. Photoreceptors and lamina cells are

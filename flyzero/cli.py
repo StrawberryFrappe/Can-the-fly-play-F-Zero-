@@ -150,6 +150,14 @@ def cmd_tune(args):
     print("best:", best)
 
 
+def cmd_learn(args):
+    from .learning import LearnParams
+    from .train import learn
+
+    print(learn(args.rom, args.state, args.episodes, args.frames, args.workers, args.out,
+                LearnParams(eta=args.eta)))
+
+
 def cmd_download(args):
     print(f"downloading FlyWire v783 connectome to {args.data_dir}")
     cx.download(args.data_dir, force=args.force)
@@ -209,6 +217,16 @@ def main(argv=None):
     t.add_argument("--out", default="tune.json")
     t.add_argument("--seed", type=int, default=0)
     t.set_defaults(func=cmd_tune)
+
+    le = sub.add_parser("learn", help="reward-train the fly's motor-output synapses")
+    le.add_argument("--rom", required=True)
+    le.add_argument("--state", required=True)
+    le.add_argument("--episodes", type=int, default=40)
+    le.add_argument("--frames", type=int, default=3600)
+    le.add_argument("--workers", type=int, default=4)
+    le.add_argument("--eta", type=float, default=2e-4)
+    le.add_argument("--out", default="learn")
+    le.set_defaults(func=cmd_learn)
 
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":

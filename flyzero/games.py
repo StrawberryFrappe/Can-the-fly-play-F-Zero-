@@ -73,6 +73,7 @@ class FZero:
         self.frame_no = 0
         self.info = {}
         self._last_move = 0
+        self._empty = 0
         if self.state is not None:
             self.em.set_state(self.state)
         frame = self._press({})
@@ -107,9 +108,10 @@ class FZero:
         if seg != self.info.get("segment") or lap != self.info.get("lap"):
             self._last_move = self.frame_no
         stalled = self.frame_no - getattr(self, "_last_move", 0)
+        self._empty = self._empty + 1 if energy < 0.02 else 0  # POWER bar empty: exploding
         self.info = {"frame": self.frame_no, "lap": lap, "segment": seg, "speed": speed,
                      "energy": round(energy, 2), "stalled": stalled,
-                     "done": lap >= 5 or stalled > 600}
+                     "done": lap >= 5 or stalled > 600 or self._empty > 90}
         return frame
 
 
