@@ -48,6 +48,37 @@ GROUPS = {  # name: (cell type, side)
 }
 
 
+def intent(masks: np.ndarray, buttons: list, tau_frames: float = 15.0) -> np.ndarray:
+    """The teacher's smoothed intention per frame (~0.25 s), not exact button taps.
+
+    Returns (n, 5): steer (-1 left .. +1 right), lean (-1 L .. +1 R), gas, brake, boost (0..1).
+    Both halves of a quick tap sequence blend into "how much, in which direction"."""
+    ix = {b: i for i, b in enumerate(buttons)}
+    m = masks.astype(np.float32)
+    raw = np.stack([m[:, ix["RIGHT"]] - m[:, ix["LEFT"]], m[:, ix["R"]] - m[:, ix["L"]],
+                    m[:, ix["B"]], m[:, ix["Y"]], m[:, ix["A"]]], 1)
+    out = np.empty_like(raw)
+    a = 1.0 / tau_frames
+    acc = raw[0].copy()
+    for t in range(len(raw)):  # causal: only what the teacher had done up to now
+        acc += a * (raw[t] - acc)
+        out[t] = acc
+    return out
+
+
+def targets_from_intent(x: np.ndarray, p: InstructParams) -> dict:
+    """Continuous version of ``targets_from_buttons`` for a smoothed intent vector."""
+    steer, lean, gas, brake = (float(v) for v in x[:4])
+    hi, lo, rest = p.high_hz, p.low_hz, p.rest_hz
+    def pair(v):  # v in -1..1 -> (left-side, right-side) rates around rest
+        return rest + (hi - rest) * max(-v, 0) - (rest - lo) * max(v, 0), \
+            rest + (hi - rest) * max(v, 0) - (rest - lo) * max(-v, 0)
+    a02L, a02R = pair(steer)
+    return {"a02L": a02L, "a02R": a02R, "g02L": a02R, "g02R": a02L,   # wings mirror the legs
+            "a01L": lo + (hi - lo) * max(-lean, 0), "a01R": lo + (hi - lo) * max(lean, 0),
+            "gas": lo + (hi - lo) * gas, "brake": lo + (hi - lo) * brake}
+
+
 def targets_from_buttons(b: dict, p: InstructParams) -> dict:
     hi, lo, rest = p.high_hz, p.low_hz, p.rest_hz
     left, right = b.get("LEFT", False), b.get("RIGHT", False)
@@ -98,7 +129,7 @@ class InstructedPlasticity:
         self.rate[t] += a_rate * (c[t] * 1000.0 / window_ms - self.rate[t])
         if not learn or teacher is None:
             return 0.0
-        tgt = targets_from_buttons(teacher, p)
+        tgt = teacher if "a02L" in teacher else targets_from_buttons(teacher, p)
         tgt_by_group = np.array([tgt[n] for n in self.names], np.float32)
         err = tgt_by_group[self.post_group] - self.rate[self.post]
         w = self.brain.data[self.pos] + p.eta * self.trace[self.pre] * err

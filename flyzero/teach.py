@@ -49,12 +49,13 @@ def build_lessons(rom: str, recordings: list[str], out: str):
 
 
 def _worker(args):
-    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror = args
+    k, rom, lessons_path, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth = args
     from . import connectome as cx
     from .biology import corrected
     from .brain import Brain, LIFParams
     from .games import FZero
-    from .instruct import InstructedPlasticity, InstructParams
+    from .instruct import InstructedPlasticity, InstructParams, intent, targets_from_intent
+    from .motor import BUTTONS
     from .motor import MotorParams, MotorReadout
     from .record import mask_to_buttons
     from .train import VISION
@@ -117,10 +118,17 @@ def _worker(args):
         for state, masks, name, racing in lessons:
             flip = mirror and rng.random() < 0.5  # mirror world: flipped view, swapped buttons
             frame = start(state)
-            for m, is_racing in zip(masks, racing):
+            smooth_intent = intent(masks, BUTTONS, smooth) if smooth else None
+            for t, (m, is_racing) in enumerate(zip(masks, racing)):
                 teacher = mask_to_buttons(m)
                 seen = frame[:, ::-1] if flip else frame
-                lesson = {SWAP.get(b, b): v for b, v in teacher.items()} if flip else teacher
+                if smooth:
+                    x = smooth_intent[t].copy()
+                    if flip:
+                        x[:2] = -x[:2]
+                    lesson = targets_from_intent(x, plast.p)
+                else:
+                    lesson = {SWAP.get(b, b): v for b, v in teacher.items()} if flip else teacher
                 counts = think(np.ascontiguousarray(seen))
                 errs.append(plast.step(counts, lesson if is_racing else None, window))
                 motor.update(counts, window)
@@ -135,9 +143,10 @@ def _worker(args):
 
 
 def teach(rom, lessons, exam_state, epochs, exam_frames, out, etas=(1e-4, 3e-4, 1e-3, 3e-3), bias_mv=7.8,
-          mirror=True):
+          mirror=True, smooth=15.0):
+    """``smooth``: teach the teacher's intention smoothed over this many frames (0 = exact taps)."""
     Path(out).mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
     with ctx.Pool(len(etas)) as pool:
-        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror)
+        pool.map(_worker, [(k, rom, lessons, exam_state, epochs, exam_frames, out, eta, bias_mv, mirror, smooth)
                            for k, eta in enumerate(etas)])

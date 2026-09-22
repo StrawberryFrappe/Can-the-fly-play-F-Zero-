@@ -179,3 +179,16 @@ def test_audio_resampling_and_lag_cap():
     for _ in range(100):
         a.push(frame)
     assert a.queued <= 48000 // 10 + 900                    # never more than ~0.1 s behind
+
+
+def test_intent_smooths_taps_into_direction():
+    from flyzero.instruct import InstructParams, intent, targets_from_intent
+    from flyzero.motor import BUTTONS
+
+    m = np.zeros((120, 12), np.uint8)
+    m[:, BUTTONS.index("B")] = 1
+    m[30:90:2, BUTTONS.index("RIGHT")] = 1        # rapid right taps
+    x = intent(m, BUTTONS, 15)
+    assert 0.3 < x[80, 0] < 0.7 and x[20, 0] == 0  # "about half right", not flickering 0/1
+    t = targets_from_intent(x[80], InstructParams())
+    assert t["a02R"] > t["a02L"] and t["g02L"] > t["g02R"] and t["gas"] > 70
