@@ -99,3 +99,16 @@ def test_fzero_boots_and_reaches_the_race():
     for _ in range(200):
         frame = g.step({"B": True})
     assert frame.shape == (224, 256, 3) and frame.std() > 10
+
+
+def test_numba_and_numpy_backends_agree_without_noise():
+    pytest.importorskip("numba")
+    rng = np.random.default_rng(3)
+    w = sp.random(300, 300, density=0.05, random_state=2, format="csr")
+    w.data = rng.normal(20, 15, w.nnz)
+    out = []
+    for backend in ("numpy", "numba"):
+        b = Brain(w, backend=backend)
+        b.v[:40] = -40.0  # kick-start a few neurons deterministically, no Poisson input
+        out.append(b.run(50))
+    np.testing.assert_array_equal(out[0], out[1])
