@@ -35,7 +35,10 @@ def make_fly(conn, frame_shape, seed, learn_params=None, vision=VISION, dt=0.25)
     return brain, eye, motor, plast
 
 
-def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=60.0, on_frame=None):
+def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=60.0, on_frame=None,
+            flight_hz=0.0, flip=False):
+    """One race attempt. ``flight_hz``: symmetric tonic drive to the steering/wing neurons (a
+    flying fly). ``flip``: mirror goggles, i.e. swap left/right between brain and pad."""
     from .learning import Reward
 
     frame = game.reset()
@@ -43,6 +46,7 @@ def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=6
     eye.lp_hp = None
     reward = Reward(plast.p)
     drive = conn.find("DNp09")
+    flight = np.concatenate([conn.find(t) for t in ("DNa02", "DNg02*", "DNa01")])
     heat = conn.find("TRN_VP2")  # antennal heat-sensing neurons: damage feels like heat
     hurt_left = 0.0
     window = 1000.0 / game.fps
@@ -53,11 +57,15 @@ def episode(game, brain, eye, motor, plast, conn, frames, learn=True, drive_hz=6
         rates = eye.see(frame)
         nidx, nrate = plast.exploration(window) if learn else (np.zeros(0, int), np.zeros(0))
         hurt_hz = plast.p.hurt_hz if hurt_left > 0 else 0.0
-        brain.set_input(np.r_[eye.idx, drive, nidx, heat],
-                        np.r_[rates, np.full(len(drive), drive_hz), nrate, np.full(len(heat), hurt_hz)])
+        brain.set_input(np.r_[eye.idx, drive, flight, nidx, heat],
+                        np.r_[rates, np.full(len(drive), drive_hz), np.full(len(flight), flight_hz), nrate,
+                              np.full(len(heat), hurt_hz)])
         hurt_left -= window
         counts = brain.run(window)
-        buttons = motor.update(counts, window)
+        buttons = dict(motor.update(counts, window))
+        if flip:
+            buttons["LEFT"], buttons["RIGHT"] = buttons["RIGHT"], buttons["LEFT"]
+            buttons["L"], buttons["R"] = buttons["R"], buttons["L"]
         frame = game.step(buttons)
         info = game.info
         r = reward(info)

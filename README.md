@@ -142,6 +142,22 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
 
    Everything upstream stays FlyWire-exact, with the corrections from step 5.
 
+8. **Why learning stalled: the corrected fly never steered.** With the corrections, DNa02,
+   DNg02 and DNa01 sit at 0 Hz in closed loop, so the fly holds the throttle and grinds along
+   the rail. A reward rule can't learn from a silent neuron. A symmetric tonic "flight" drive
+   (`flight_hz`) makes them responsive.
+9. **Good news and bad news in the corrected brain.** On a clean driving lap, DNa02 left−right
+   now correlates with the road's position (r = 0.33; ≈ 0 before the corrections). But the sign
+   is backwards for driving: with the road on the right, the fly turns left, toward the
+   high-contrast walls. That's plausibly real fly behaviour: flies fixate and approach
+   high-contrast edges and objects. "Mirror goggles" (`flip`: swapping left and right between
+   brain and pad) didn't rescue it either. Every combination of flip and flight drive made
+   1–5 segments of progress in 40 s.
+10. **Heat as a lane-departure sense doesn't work in this model.** Heating either antenna
+    (TRN_VP2), cooling or humidity sensors all push *left* DNa02 up by about 100 Hz, whichever
+    side is stimulated. There's no side-specific avoidance to hook into. Many different inputs
+    converge on the left DNa02.
+
 ### Earlier findings
 
 * **Photoreceptors don't work as an input.** Driving all 10,582 photoreceptors activates about
