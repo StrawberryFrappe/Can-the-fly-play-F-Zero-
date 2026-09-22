@@ -12,6 +12,51 @@ escape neuron (the giant fiber) fires the super jet.
  (snes9x)       T4/T5 (12,246)       FlyWire connectome        DNa02 / DNp09 / ...   (B, ←, →, A…)
 ```
 
+## Is this a real fly?
+
+No. No living animal is involved, and the program is not a fly. Here is what it actually is.
+
+**Where the data comes from.** In a study published in 2018, researchers imaged the brain of a
+single adult female fruit fly with an electron microscope. The fly was a laboratory specimen, and its brain had been
+chemically preserved and cut into about 7,000 ultrathin slices, a standard procedure in
+neuroanatomy ([Zheng et al. 2018](https://doi.org/10.1016/j.cell.2018.06.019)). Over several
+years the [FlyWire](https://flywire.ai) consortium traced every neuron and synapse in those images
+([Dorkenwald et al. 2024](https://doi.org/10.1038/s41586-024-07558-y)). The result is a
+*connectome*: a table of which neuron connects to which, and through how many synapses. It is a
+wiring diagram. Structurally it is a spreadsheet, closer to a street map than to a living thing.
+
+**What the program does with it.** Each of the 138,639 neurons becomes a *leaky integrate-and-fire*
+unit: a single number (a voltage) that rises when it receives input, slowly leaks back, and "fires"
+when it crosses a threshold. A firing unit adds a small amount to the voltage of the units it
+connects to, in proportion to the synapse counts in the table. That is the entire model. The
+program repeats this update for every unit, 10,000 times per simulated second, using ordinary
+array arithmetic.
+
+**What it leaves out.** Compared with a real nervous system, the model has:
+
+* no body, muscles, senses or environment, apart from the game image we feed in and the buttons we read out;
+* no neuromodulators (dopamine, serotonin, octopamine), hormones or metabolism;
+* no learning or memory: connection strengths never change;
+* no dendritic computation, no gap junctions and no graded (non-spiking) signalling. Much of early
+  fly vision relies on graded signalling, which is why we compute that stage separately;
+* neuron properties that are identical for all 138,639 cells, whereas real neurons differ widely.
+
+**Why it still works a little.** Wiring alone captures a surprising amount of how information
+flows. [Shiu et al. 2024](https://www.nature.com/articles/s41586-024-07763-9) showed that this
+exact model predicts which neurons take part in feeding and grooming behaviours, and experiments
+in real flies confirmed the predictions. In this project the same wiring routes visual motion to
+the turning neurons and looming stimuli to the escape neuron, as in the animal. Those are
+properties of the circuit diagram, in the same way a road map tells you which towns are connected
+without containing any traffic.
+
+**Could it feel anything?** There is no scientific basis for thinking so. The simulation lacks
+nearly everything that makes a nervous system part of a living organism: a body to keep alive,
+internal states, chemistry, and the ability to change with experience. It is a numerical
+experiment on a diagram, of the same kind as a weather or traffic simulation, and it stops existing
+in any meaningful sense when the script exits. Questions about the moral status of future, far more
+complete brain emulations are real and worth discussing. This project is nowhere near that
+territory.
+
 ## How it works
 
 | Stage | What | Where |

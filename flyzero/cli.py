@@ -93,6 +93,7 @@ def cmd_play(args):
         for f in menu_frames:  # the menu macro, so the video starts at power-on
             writer.append_data(dash.render(f, 0.0, 0, 0, {"phase": "menus (scripted)"}))
 
+    trace = [] if args.trace else None
     window = 1000.0 / game.fps
     wall = time.time()
     try:
@@ -102,6 +103,9 @@ def cmd_play(args):
             counts = brain.run(window)
             buttons = motor.update(counts, window)
             frame = game.step(buttons)
+            if trace is not None:
+                trace.append({"buttons": [k for k, v in buttons.items() if v],
+                              "rates": {k: round(float(v), 2) for k, v in motor.rates.items()}})
 
             if dash:
                 out = dash.render(frame, brain.t * brain.p.dt, int(counts.sum()),
@@ -131,6 +135,11 @@ def cmd_play(args):
         if writer:
             writer.close()
             print(f"wrote {args.video}")
+        if trace is not None:
+            import json
+
+            Path(args.trace).write_text(json.dumps({"fps": game.fps, "frames": trace}))
+            print(f"wrote {args.trace}")
 
 
 def cmd_download(args):
@@ -175,6 +184,7 @@ def main(argv=None):
                    help="tonic Poisson drive to a cell type, like optogenetic activation "
                         "(default: DNp09=60, a fly that wants to walk). Pass --drive none to disable.")
     p.add_argument("--video", help="write a dashboard video (mp4)")
+    p.add_argument("--trace", help="write per-frame buttons and DN rates (json)")
     p.add_argument("--show", action="store_true", help="live window (needs a display)")
     p.add_argument("--log-every", type=int, default=60)
     p.add_argument("--seed", type=int, default=0)
