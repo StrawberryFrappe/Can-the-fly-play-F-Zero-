@@ -382,6 +382,73 @@ class BatchInstructDeep(BatchInstruct):
             n, np.int32(self.B), self.k_sel, self.k_pre, self.k_post, self.trace, np.int32(self.trace.shape[1]),
             delta, np.int32(len(self.l1)), self.brain.pw, np.int32(self.brain.pw.shape[1]),
             self.sign, self.wmax, cp.asarray(coef), self.k_fos, np.int32(self.n_flies)))
+        self._deeper(delta, learn, eta)
+
+    def _deeper(self, delta, learn, eta):
+        """Hook for a further layer (``BatchInstructDeep2``)."""
+
+
+def deep2_positions(conn: Connectome, dn_pos: np.ndarray) -> np.ndarray:
+    """CSR positions of every synapse onto "L2", the inputs of the DNs' presynaptic partners
+    (L1), leaving out L1 and the motor DNs themselves (their inputs are the layers above)."""
+    w = sp.csr_matrix(conn.weights, dtype=np.float32)
+    w.sort_indices()
+    rows = np.repeat(np.arange(w.shape[0]), np.diff(w.indptr))
+    l1 = np.unique(rows[dn_pos])
+    is_l1 = np.zeros(conn.n, bool)
+    is_l1[l1] = True
+    l2 = np.unique(rows[is_l1[w.indices]])
+    is_l2 = np.zeros(conn.n, bool)
+    is_l2[l2] = True
+    is_l2[l1] = False
+    is_l2[w.indices[dn_pos]] = False
+    return np.flatnonzero(is_l2[w.indices])
+
+
+class BatchInstructDeep2(BatchInstructDeep):
+    """``BatchInstructDeep`` plus one more layer: synapses onto L2 learn from the L1 errors passed
+    back through the fly's own L2 -> L1 synapses (a second step of backpropagation through its
+    wiring): ``delta2_k = sum_i n_ki * delta1_i``, ``dw_jk = eta_deep2 * trace_j * delta2_k``."""
+
+    def __init__(self, brain, conn: Connectome, params: InstructParams | None = None, fly_of_slot=None,
+                 eta_deep: float = 1e-6, deep_scale=None, eta_bias: float = 0.0, eta_deep2: float = 1e-8):
+        super().__init__(brain, conn, params, fly_of_slot, eta_deep, deep_scale, eta_bias)
+        self.eta_deep2 = eta_deep2
+        post, pre = brain.pl_post, brain.pl_pre
+        l1_index = np.full(conn.n, -1, np.int64)
+        l1_index[self.l1] = np.arange(len(self.l1))
+        deep_sel = cp.asnumpy(self.deep_sel)
+        self.l2 = np.unique(pre[deep_sel])
+        l2_index = np.full(conn.n, -1, np.int64)
+        l2_index[self.l2] = np.arange(len(self.l2))
+        self.d2_back = cp.asarray(deep_sel)                              # L2 -> L1 synapses
+        self.d2_back_pre = cp.asarray(l2_index[pre[deep_sel]])
+        self.d2_back_post = cp.asarray(l1_index[post[deep_sel]])
+        is_sel = np.zeros(len(post), bool)
+        is_sel[cp.asnumpy(self.dn_sel)] = True
+        is_sel[deep_sel] = True
+        d2 = (l2_index[post] >= 0) & ~is_sel
+        sel2 = np.flatnonzero(d2)
+        self.n_deep2 = len(sel2)
+        self.k2_sel = cp.asarray(sel2.astype(np.int32))
+        self.k2_pre = self.pre_k[cp.asarray(sel2)].astype(cp.int32)
+        self.k2_post = cp.asarray(l2_index[post[sel2]].astype(np.int32))
+
+    def _deeper(self, delta1, learn, eta):
+        import cupyx
+
+        w = self.brain.pw[:, self.d2_back] / self.brain.p.w_syn
+        delta2 = cp.zeros((self.B, len(self.l2)), cp.float32)
+        cupyx.scatter_add(delta2, (slice(None), self.d2_back_pre), w * delta1[:, self.d2_back_post])
+        eta_b = np.broadcast_to(cp.asnumpy(cp.asarray(eta, cp.float32)).ravel(), (self.B,)) * \
+            (self.eta_deep2 / self.p.eta) * self.deep_scale
+        n_act = np.bincount(self.fly_of_slot, weights=learn, minlength=self.n_flies)
+        coef = np.where(learn, eta_b / np.maximum(n_act[self.fly_of_slot], 1), 0.0).astype(np.float32)
+        self._kernel(((self.n_deep2 + 255) // 256,), (256,), (
+            np.int32(self.n_deep2), np.int32(self.B), self.k2_sel, self.k2_pre, self.k2_post, self.trace,
+            np.int32(self.trace.shape[1]), delta2, np.int32(len(self.l2)), self.brain.pw,
+            np.int32(self.brain.pw.shape[1]), self.sign, self.wmax, cp.asarray(coef), self.k_fos,
+            np.int32(self.n_flies)))
 
 
 class BatchReward(_Plastic):

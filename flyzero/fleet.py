@@ -22,7 +22,8 @@ BIAS_TYPES = ("DNa02", "DNg02*", "DNa01", "DNp09")
 class Fleet:
     def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=None,
                  bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
-                 deep: bool = False, taps: bool = False, steer_span: float = 150.0, lean_span: float = 70.0):
+                 deep: bool = False, taps: bool = False, steer_span: float = 150.0, lean_span: float = 70.0,
+                 steer_threshold: float = 10.0, lean_threshold: float = 10.0):
         """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
         ``deep``: also make the synapses onto the DNs' presynaptic partners plastic.
         ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber).
@@ -41,16 +42,21 @@ class Fleet:
         from .batch import PLASTIC_TYPES
 
         self.pos = plastic_positions(conn, plastic_types or PLASTIC_TYPES)
-        if deep:
-            from .batch import deep_positions
+        if deep:   # True / 1: synapses onto the DNs' inputs too; 2: one layer further
+            from .batch import deep2_positions, deep_positions
 
-            self.pos = np.union1d(self.pos, deep_positions(conn, self.pos))
+            dn = self.pos
+            self.pos = np.union1d(dn, deep_positions(conn, dn))
+            if int(deep) >= 2:
+                self.pos = np.union1d(self.pos, deep2_positions(conn, dn))
         self.brain = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=batch, seed=seed, plastic_pos=self.pos)
         v = dict(VISION)
         self.eye = MotionEye(conn, (224, 256), MotionParams(gain=10 ** v.pop("log_gain"), **v))
         from .motor import MotorParams
 
-        self.motor = BatchMotor(conn, batch, MotorParams(taps=taps, steer_span=steer_span, lean_span=lean_span))
+        self.motor = BatchMotor(conn, batch, MotorParams(taps=taps, steer_span=steer_span, lean_span=lean_span,
+                                                         steer_threshold=steer_threshold,
+                                                         lean_threshold=lean_threshold))
         self.bias_idx = np.concatenate([conn.find(t) for t in BIAS_TYPES])
         self.bias_mv = bias_mv
         self.brain.set_bias(self.bias_idx, bias_mv)

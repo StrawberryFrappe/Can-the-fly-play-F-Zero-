@@ -163,3 +163,57 @@ def test_tap_readout_duty_cycle():
     assert presses(5.0) == 0.0                          # inside the threshold: no taps
     assert abs(presses(85.0) - 0.5) < 0.02              # (85 - 10) / 150 = half the frames
     assert presses(400.0) == 1.0                        # beyond the span: held
+
+
+def test_long_plastic_rows_are_split_into_chunks():
+    rng = np.random.default_rng(4)
+    w = sp.random(600, 600, density=0.6, random_state=4, format="csr")
+    w.data = rng.normal(5.0, 3, w.nnz)
+    cpu = Brain(w, LIFParams(dt=0.25), backend="numba" if _has_numba() else "numpy")
+    assert np.diff(cpu.indptr).max() > 300                 # rows span two chunks
+    pos = np.arange(len(cpu.data))                          # every synapse plastic
+    gb = BatchBrain(w, LIFParams(dt=0.25), batch=2, plastic_pos=pos)
+    gb.pw[1] *= 0.5
+    cpu.v[:40] = -40.0
+    gb.v[:, :40] = -40.0
+    ref = cpu.run(30)
+    out = cp.asnumpy(gb.run(30))
+    assert ref.sum() > 50
+    np.testing.assert_array_equal(out[0], ref)
+    assert not np.array_equal(out[0], out[1])
+
+
+def test_second_layer_update_matches_plain_formula():
+    from flyzero import connectome as cx
+    from flyzero.batch import BatchInstructDeep2, deep2_positions, deep_positions, plastic_positions
+
+    conn = cx.synthetic()
+    p1 = plastic_positions(conn)
+    pos = np.union1d(np.union1d(p1, deep_positions(conn, p1)), deep2_positions(conn, p1))
+    gb = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=2, plastic_pos=pos)
+    bi = BatchInstructDeep2(gb, conn, fly_of_slot=[0, 1], eta_deep=1e-3, eta_deep2=1e-4)
+    assert bi.n_deep2 > 0
+    rng = np.random.default_rng(1)
+    bi.trace[...] = cp.asarray(rng.uniform(0, 5, bi.trace.shape).astype(np.float32))
+    bi.rate[...] = cp.asarray(rng.uniform(0, 60, bi.rate.shape).astype(np.float32))
+    tgt = rng.uniform(0, 80, (2, len(bi.names))).astype(np.float32)
+    w0 = cp.asnumpy(gb.pw).copy()
+    g = lambda a: cp.asnumpy(a)
+    sel = g(bi.dn_sel)
+    err = tgt[:, g(bi.post_group)[sel]] - g(bi.rate)[:, g(bi.post_k)[sel]]
+    d1 = np.zeros((2, len(bi.l1)), np.float32)
+    np.add.at(d1.T, g(bi.dn_pre_l1), (w0[:, sel] / gb.p.w_syn * err).T)
+    w1 = w0.copy()                      # layer-1 synapses after their own update (used backwards)
+    ch1 = bi.eta_deep * g(bi.trace)[:, g(bi.deep_pre_k)] * d1[:, g(bi.deep_post_l1)]
+    dsel = g(bi.deep_sel)
+    s1, m1 = g(bi.sign)[dsel], g(bi.wmax)[dsel]
+    w1[:, dsel] = s1 * np.clip(s1 * (w0[:, dsel] + ch1), 0, m1)
+    d2 = np.zeros((2, len(bi.l2)), np.float32)
+    np.add.at(d2.T, g(bi.d2_back_pre), (w1[:, g(bi.d2_back)] / gb.p.w_syn * d1[:, g(bi.d2_back_post)]).T)
+    s2 = g(bi.k2_sel)
+    ch2 = bi.eta_deep2 * g(bi.trace)[:, g(bi.k2_pre)] * d2[:, g(bi.k2_post)]
+    sg, mx = g(bi.sign)[s2], g(bi.wmax)[s2]
+    expected = sg * np.clip(sg * (w0[:, s2] + ch2), 0, mx)
+    bi._learn(cp.asarray(tgt), np.array([True, True]), bi.p.eta)
+    np.testing.assert_allclose(g(gb.pw)[:, s2], expected, rtol=1e-4, atol=1e-5)
+    assert np.abs(expected - w0[:, s2]).max() > 1e-5

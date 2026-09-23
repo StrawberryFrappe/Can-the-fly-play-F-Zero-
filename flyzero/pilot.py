@@ -65,6 +65,16 @@ class PilotParams:
     boost_y_max: float = 600.0
 
 
+def hold_style(x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
+    """The pilot's intent as a driver who holds buttons would press them: full steer / lean when
+    the continuous command is strong, nothing otherwise. The flies' readout holds buttons, so
+    this is the label that matches their hands (a pilot driving like this still finishes all
+    5 laps, in 9,828 frames, 3rd, pressing steer on 33% of frames instead of 95%)."""
+    x = np.array(x, np.float32, copy=True)
+    x[:2] = np.where(np.abs(x[:2]) > threshold, np.sign(x[:2]), 0.0)
+    return x
+
+
 class Pilot:
     """Continuous steering command (-1..1, beyond +-1 also leaning) turned into D-pad taps by
     sigma-delta modulation: the tap duty cycle equals the command, like quick human tapping."""

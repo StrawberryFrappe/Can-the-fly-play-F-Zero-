@@ -25,6 +25,7 @@ from .brain import LIFParams
 
 _SRC = r"""
 #define CHUNK 256
+#define CBITS 7
 __device__ __forceinline__ unsigned int mix(unsigned int x) {
     x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return x;
 }
@@ -69,12 +70,13 @@ extern "C" __global__ void update(
     if (vi >= v_th && r <= 0) {
         vi = v_reset; r = n_ref; counts[tid] += 1;
         // work items of <= CHUNK synapses each, so one busy neuron can't stall a whole step
-        long long deg = indptr[i + 1] - indptr[i];
-        int nch = (int)((deg + CHUNK - 1) / CHUNK);
-        if (nch == 0 && pl_indptr[i + 1] > pl_indptr[i]) nch = 1;
+        // fixed-weight chunks first, then this fly's plastic weights, <= CHUNK synapses each
+        int nf = (int)((indptr[i + 1] - indptr[i] + CHUNK - 1) / CHUNK);
+        int np_ = (int)((pl_indptr[i + 1] - pl_indptr[i] + CHUNK - 1) / CHUNK);
+        int nch = nf + np_;
         if (nch > 0) {
             int k = atomicAdd(n_spikes, nch);
-            for (int c = 0; c < nch; c++) spikes[k + c] = (int)(tid << 6) | c;
+            for (int c = 0; c < nch; c++) spikes[k + c] = (int)(tid << CBITS) | c;
         }
     }
     if (gi != g0) g[tid] = gi;
@@ -95,16 +97,22 @@ extern "C" __global__ void propagate(
     float* buf = pending + (long long)slot * B * n;
     for (int s = warp; s < total; s += n_warps) {
         int item = spikes[s];
-        int tid = item >> 6, c = item & 63;
+        int tid = item >> CBITS, c = item & ((1 << CBITS) - 1);
         int b = tid / n, i = tid - b * n;
         float* row = buf + (long long)b * n;
-        long long end = indptr[i + 1], k0 = indptr[i] + (long long)c * CHUNK;
-        long long k1 = k0 + CHUNK < end ? k0 + CHUNK : end;
-        for (long long k = k0 + lane; k < k1; k += 32)
-            atomicAdd(row + indices[k], data[k]);
-        if (c == 0)
-            for (long long k = pl_indptr[i] + lane; k < pl_indptr[i + 1]; k += 32)
-                atomicAdd(row + pl_post[k], pl_w[(long long)b * n_pl + k]);
+        int nf = (int)((indptr[i + 1] - indptr[i] + CHUNK - 1) / CHUNK);
+        if (c < nf) {
+            long long end = indptr[i + 1], k0 = indptr[i] + (long long)c * CHUNK;
+            long long k1 = k0 + CHUNK < end ? k0 + CHUNK : end;
+            for (long long k = k0 + lane; k < k1; k += 32)
+                atomicAdd(row + indices[k], data[k]);
+        } else {
+            long long end = pl_indptr[i + 1], k0 = pl_indptr[i] + (long long)(c - nf) * CHUNK;
+            long long k1 = k0 + CHUNK < end ? k0 + CHUNK : end;
+            const float* w = pl_w + (long long)b * n_pl;
+            for (long long k = k0 + lane; k < k1; k += 32)
+                atomicAdd(row + pl_post[k], w[k]);
+        }
     }
     if (blockIdx.x == 0 && threadIdx.x == 0) n_spikes[next] = 0;   // the list the next step fills
 }
@@ -156,8 +164,8 @@ class BatchBrain:
         self.n_delay = max(1, int(round(p.delay / p.dt)))
         self.n_ref = int(round(p.t_ref / p.dt))
         assert self.n_ref < 127, "refractory counter is int8 on the GPU"
-        # spike work items are (fly * n + neuron) << 6 | chunk
-        assert np.diff(self.indptr).max() <= 64 * 256 and batch * n < 2 ** 25
+        # spike work items are (fly * n + neuron) << 7 | chunk (fixed chunks, then plastic ones)
+        assert 2 * np.diff(self.indptr).max() <= 128 * 256 and batch * n < 2 ** 24
         self.decay_m = np.float32(p.dt / p.tau_m)
         self.decay_syn = np.float32(np.exp(-p.dt / p.tau_syn))
         self.kick = np.float32(p.f_poisson * p.w_syn)
@@ -170,7 +178,7 @@ class BatchBrain:
         self.p_ext = cp.zeros((batch, 0), cp.float32)      # Poisson input, Hz
         self.bias_ext = cp.zeros((batch, 0), cp.float32)   # mV
         # work-item list (see CHUNK): enough even if every neuron fired at once
-        self.spikes = cp.zeros(batch * (n + w.nnz // 256 + 1), cp.int32)
+        self.spikes = cp.zeros(batch * (2 * n + 2 * (w.nnz // 256) + 2), cp.int32)
         self.n_spikes = cp.zeros(2, cp.int32)
         self._upd, self._prop = _kernels()
         self.reset()

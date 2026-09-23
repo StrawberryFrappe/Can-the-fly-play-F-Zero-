@@ -142,21 +142,29 @@ def dagger(a):
     resumes from its own snapshot a few seconds before (the owner OK'd this for training).
     """
     import cupy as cp
-    from .batch import BatchInstruct, BatchInstructDeep, targets
+    from .batch import BatchInstruct, BatchInstructDeep, BatchInstructDeep2, targets
     from .fleet import Fleet
     from .instruct import InstructParams
 
     etas = [float(e) for e in a.etas.split(",")]
     fos = np.repeat(np.arange(len(etas)), a.batch // len(etas))
     B = len(fos)
-    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=max(float(e) for e in a.eta_deep.split(',')) > 0,
+    depth = 2 if a.eta_deep2 > 0 else int(max(float(e) for e in a.eta_deep.split(',')) > 0)
+    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=depth, steer_threshold=a.steer_threshold,
+                  lean_threshold=a.lean_threshold,
                   taps=a.taps, steer_span=a.steer_span, lean_span=a.lean_span)
     deep = [float(e) for e in a.eta_deep.split(",")]
     if max(deep) > 0:
         # --eta-deep: relative to each fly's eta; one value, or one per fly
         deep = np.broadcast_to(np.array(deep), (len(etas),))
-        ip = BatchInstructDeep(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos,
-                               eta_deep=etas[0], deep_scale=deep[fos], eta_bias=a.eta_bias)
+        if depth == 2:
+            ip = BatchInstructDeep2(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos,
+                                    eta_deep=etas[0], deep_scale=deep[fos], eta_bias=a.eta_bias,
+                                    eta_deep2=a.eta_deep2 * etas[0])
+            print(f"second layer: {ip.n_deep2} synapses onto {len(ip.l2)} L2 neurons", flush=True)
+        else:
+            ip = BatchInstructDeep(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos,
+                                   eta_deep=etas[0], deep_scale=deep[fos], eta_bias=a.eta_bias)
         print(f"deep plasticity: {ip.n_deep} synapses onto {len(ip.l1)} L1 neurons", flush=True)
     else:
         ip = BatchInstruct(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos, eta_bias=a.eta_bias)
@@ -192,8 +200,12 @@ def dagger(a):
             r, inf = fleet.pool.restore([starts[pick_start()]], [k], [bool(flips[k])])
         return r[0], inf[0]
 
+    from .pilot import hold_style
+
     def label(inf, k):
         x = np.asarray(inf["pilot"], np.float32).copy()
+        if a.hold_labels:
+            x = hold_style(x, a.hold_labels)
         if flips[k]:
             x[:2] = -x[:2]
         return targets(x, ip.p)
@@ -301,7 +313,8 @@ def attempts(a):
 
     w = np.load(a.weights)
     fleet = Fleet(a.rom, a.batch, seed=a.seed, deep=a.deep, taps=bool(w.get("taps", False)),
-                  steer_span=float(w.get("steer_span", 150.0)), lean_span=float(w.get("lean_span", 70.0)))
+                  steer_span=float(w.get("steer_span", 150.0)), lean_span=float(w.get("lean_span", 70.0)),
+                  steer_threshold=a.steer_threshold, lean_threshold=a.lean_threshold)
     BatchInstruct(fleet.brain, fleet.conn).load(w)
     start = Path(a.exam).read_bytes()
     out = Path(a.out)
@@ -353,6 +366,8 @@ def main(argv=None):
     dg.add_argument("--snap-every", type=int, default=120)
     dg.add_argument("--max-restores", type=int, default=3)
     dg.add_argument("--p-grid", type=float, default=0.25)
+    dg.add_argument("--eta-deep2", type=float, default=0.0,
+                    help="second layer (synapses onto the inputs of the DNs' inputs), relative to eta")
     dg.add_argument("--eta-bias", type=float, default=0.0,
                     help="intrinsic plasticity of the instructed DNs (mV per Hz of error per frame)")
     dg.add_argument("--consolidate", type=float, default=0.0,
@@ -362,6 +377,10 @@ def main(argv=None):
     dg.add_argument("--taps", action="store_true", help="tap-rate readout of steering / leaning (motor.MotorParams)")
     dg.add_argument("--steer-span", type=float, default=150.0, help="taps: Hz beyond threshold for a full hold")
     dg.add_argument("--lean-span", type=float, default=70.0)
+    dg.add_argument("--steer-threshold", type=float, default=10.0)
+    dg.add_argument("--lean-threshold", type=float, default=10.0)
+    dg.add_argument("--hold-labels", type=float, default=0.0,
+                    help="teach hold-style labels: full steer/lean when the pilot's |intent| exceeds this")
     dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
     dg.add_argument("--exam-frames", type=int, default=16000, help="a slow 5-lap race takes ~13,500 frames")
     dg.add_argument("--exam-every", type=int, default=200_000)
@@ -379,6 +398,8 @@ def main(argv=None):
     at.add_argument("--batch", type=int, default=8)
     at.add_argument("--exam-frames", type=int, default=16000)
     at.add_argument("--keep", type=int, default=150, help="also save drives with at least this progress")
+    at.add_argument("--steer-threshold", type=float, default=10.0, help="readout: Hz of left-right difference to steer")
+    at.add_argument("--lean-threshold", type=float, default=10.0)
     at.add_argument("--seed", type=int, default=0)
     at.add_argument("--out", required=True)
     a = ap.parse_args(argv)
