@@ -173,3 +173,106 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
     save_run(Path(out) / "baseline_drive.npz", Path(exam_state).read_bytes(), np.array(pressed),
              np.zeros((len(pressed), 9)), "cnn", **res)
     return res
+
+
+def run_dagger(rom: str, exam_state: str, out: str, line: str = "runs/pilot/mute_city_line.npz",
+               rounds: int = 12, drive_frames: int = 3000, drives: int = 4, epochs: int = 4,
+               exam_frames: int = 12000, seed: int = 0, cap: int = 200_000):
+    """The same CNN, taught the way the fly is: DAgger with the pilot as instructor.
+
+    Round 0 learns from the pilot's own race. In every later round the network drives
+    alone, the pilot labels every frame it visits, the frames join the dataset and the network
+    retrains on all of it (Ross et al. 2011). After each round: the solo exam from the grid."""
+    import torch
+    import torch.nn.functional as F
+
+    from .games import FZero
+    from .live import save_run
+    from .pilot import Pilot
+    from .record import buttons_to_mask
+
+    torch.manual_seed(seed)
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    Path(out).mkdir(parents=True, exist_ok=True)
+    Lp = np.load(line)
+    pilot = Pilot(Lp["points"], Lp["speed"])
+    game = FZero(rom, skip_menu=True)
+    start = Path(exam_state).read_bytes()
+    X = np.lib.format.open_memmap(Path(out) / "frames.npy", "w+", np.uint8, (cap, 56, 64, 6))
+    Y = np.zeros((cap, 4), np.int64)
+    n = 0
+    net = build_net().to(dev)
+    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+
+    def label(x):
+        s, le, g = float(x[0]), float(x[1]), float(x[2])
+        return (1 if s < -0.3 else 2 if s > 0.3 else 0), (1 if le < -0.1 else 2 if le > 0.1 else 0), int(g > 0.5), 0
+
+    def begin():
+        game.em.set_state(start)
+        game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
+        pilot.reset()
+        return game._press({})
+
+    def drive(policy, frames, collect):
+        nonlocal n
+        frame = begin()
+        prev, prog, pressed = observe(frame), Progress(), []
+        for i in range(frames):
+            cur = observe(frame)
+            x = pilot.intent(game.ram())
+            if collect and n < cap and FZero.racing(frame):
+                X[n] = np.concatenate([cur, prev], -1)
+                Y[n] = label(x)
+                n += 1
+            b = pilot.buttons(game.ram(), x) if policy == "pilot" else policy(cur, prev)
+            prev = cur
+            pressed.append(buttons_to_mask(b))
+            frame = game.step(b)
+            prog.update(game.info["segment"], i)
+            if game.info["done"]:
+                break
+        return {"progress": prog.total, "lap": game.info["lap"], "frames": i + 1,
+                "energy": game.info["energy"], "finished": game.info["lap"] >= 5}, pressed
+
+    def cnn(cur, prev):
+        with torch.no_grad():
+            s, le, g, br = (o.argmax(1).item() for o in net(to_tensor(cur, prev).to(dev)))
+        return {"LEFT": s == 1, "RIGHT": s == 2, "L": le == 1, "R": le == 2, "B": g == 1, "Y": br == 1}
+
+    def train():
+        net.train()
+        Xt, Yt = torch.from_numpy(X[:n]), torch.from_numpy(Y[:n])
+        wts = [torch.tensor(1.0 / np.maximum(np.bincount(Y[:n, k], minlength=c), 1) ** 0.5,
+                            dtype=torch.float32, device=dev) for k, c in enumerate((3, 3, 2, 2))]
+        for _ in range(epochs):
+            perm = torch.randperm(n)
+            for b in range(0, n, 256):
+                idx = perm[b:b + 256]
+                xb, yb = Xt[idx].to(dev).permute(0, 3, 1, 2).float() / 255.0, Yt[idx].to(dev)
+                flip = torch.rand(len(idx), device=dev) < 0.5    # mirror world, as for the fly
+                xb[flip] = xb[flip].flip(-1)
+                for k in (0, 1):
+                    col = yb[flip, k]
+                    yb[flip, k] = torch.where(col == 1, 2, torch.where(col == 2, 1, col))
+                loss = sum(F.cross_entropy(o, yb[:, k], weight=wts[k]) for k, o in enumerate(net(xb)))
+                opt.zero_grad(); loss.backward(); opt.step()
+        net.eval()
+
+    drive("pilot", 12000, True)
+    best = None
+    for r in range(rounds + 1):
+        train()
+        exam, pressed = drive(cnn, exam_frames, False)
+        rec = {"round": r, "frames_in_dataset": n, "exam": exam}
+        print(json.dumps(rec), flush=True)
+        with open(Path(out) / "log.jsonl", "a") as f:
+            f.write(json.dumps(rec) + "\n")
+        if best is None or exam["progress"] > best:
+            best = exam["progress"]
+            save_run(Path(out) / "best_drive.npz", start, np.array(pressed), np.zeros((len(pressed), 9)), "cnn", **exam)
+            torch.save(net.state_dict(), Path(out) / "cnn_dagger.pt")
+        if r < rounds:
+            for _ in range(drives):
+                drive(cnn, drive_frames, True)
+    return best

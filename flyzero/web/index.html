@@ -398,7 +398,7 @@
     const d = DRIVERS[kind] || DRIVERS.fly;
     $("driver").textContent = d[0]; $("driver").className = "driver " + kind; $("blurb").textContent = d[1];
   }
-  const COUNTDOWN = 341;   // frames from our start-line state to the race clock starting
+  const COUNTDOWN = 102;   // frames from our start-line state to GO (the car first moves)
   function fmtTime(frames) {
     const s = frames / 60.0988, m = Math.floor(s / 60), r = s - m * 60;
     return `${m}'${String(Math.floor(r)).padStart(2, "0")}"${String(Math.floor((r % 1) * 100)).padStart(2, "0")}`;
