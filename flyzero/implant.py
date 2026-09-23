@@ -54,7 +54,10 @@ def electrodes(conn, decode_file: str | None = "work/decode_data.npz", l2_top: i
             k = np.ones(5) / 5
             r = np.array([abs(np.corrcoef(np.convolve(X[:, c].astype(float), k, "same"), steer)[0, 1]) for c in cols])
             idx = np.union1d(idx, keep[cols[np.argsort(-np.nan_to_num(r))[:l2_top]]])
-    return idx
+    # no electrodes on descending neurons: the clamp drives the motor DNs, and reading them (or
+    # DNs they excite) lets the implant copy its own last command (causal confusion; the first
+    # L2 implant's exams got worse while its training loss kept falling)
+    return idx[sc[idx] != "descending"]
 
 
 class Clamp:
@@ -101,10 +104,11 @@ def build_net(n_in: int):
                                       nn.Linear(256, 128), nn.ReLU())
             self.steer, self.lean, self.gas, self.boost = (nn.Linear(128, 3), nn.Linear(128, 3),
                                                            nn.Linear(128, 2), nn.Linear(128, 2))
+            self.analog = nn.Linear(128, 2)   # --taps: continuous steer and lean, like the pilot's
 
         def forward(self, x):
             h = self.body(x)
-            return self.steer(h), self.lean(h), self.gas(h), self.boost(h)
+            return self.steer(h), self.lean(h), self.gas(h), self.boost(h), self.analog(h).tanh()
 
     return Implant()
 
@@ -116,11 +120,18 @@ def classes(x: np.ndarray) -> np.ndarray:
                      int(g > 0.5), int(b > 0.5)], np.int64)
 
 
+def intent_analog(outs) -> np.ndarray:
+    """--taps: continuous steer / lean (tapped by the readout), most likely gas and boost."""
+    g, b = (o.argmax(1).cpu().numpy() for o in outs[2:4])
+    a = outs[4].cpu().numpy()
+    return np.stack([a[:, 0], a[:, 1], g.astype(float), np.zeros(len(g)), b.astype(float)], 1)
+
+
 def intent_from(outs) -> np.ndarray:
     """Implant outputs -> intent vectors: the most likely class of each head. (Expected values
     turned every "maybe 20% lean" into a target rate that already pressed the button: the first
     augmented fly steered on 94% and leaned on 85% of frames.)"""
-    s, le, g, b = (o.argmax(1).cpu().numpy() for o in outs)
+    s, le, g, b = (o.argmax(1).cpu().numpy() for o in outs[:4])
     steer = np.where(s == 1, -1.0, np.where(s == 2, 1.0, 0.0))
     lean = np.where(le == 1, -1.0, np.where(le == 2, 1.0, 0.0))
     return np.stack([steer, lean, g.astype(float), np.zeros(len(g)), b.astype(float)], 1)
@@ -139,7 +150,9 @@ def run(a):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     B = a.batch
-    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True)
+    # --taps: the readout taps at a rate set by the DNs, exactly as the pilot's continuous steering
+    # maps onto its duty cycle (160 Hz = full turn, 80 Hz = full lean in the lesson targets)
+    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True, taps=a.taps, steer_span=150.0, lean_span=70.0)
     host = BatchInstruct(fleet.brain, fleet.conn)
     host.load(np.load(a.host))                     # the natural fly, unchanged from here on
     idx = electrodes(fleet.conn, l2_top=a.l2_top)
@@ -153,6 +166,7 @@ def run(a):
     cap = a.cap
     X = torch.zeros((cap, len(idx)), dtype=torch.float16, device=dev)   # aggregated dataset (GPU)
     Y = torch.zeros((cap, 4), dtype=torch.long, device=dev)
+    Ya = torch.zeros((cap, 2), dtype=torch.float32, device=dev)    # the pilot's continuous steer, lean
     n = seen = 0
     mu = sd = None
     ema = cp.zeros((B, len(idx)), cp.float32)
@@ -190,12 +204,13 @@ def run(a):
             if implant_on:
                 with torch.no_grad():
                     x = torch.as_tensor(features(), device=dev)
-                    intent = intent_from(net(x))
+                    intent = intent_analog(net(x)) if a.taps else intent_from(net(x))
                 tgt = np.array([targets(v, ip) for v in intent], np.float32)
                 clamp.step(counts, tgt, on, fleet.window)
             buttons = fleet.motor.update(counts, fleet.window)
             if collect:
                 lab = np.array([classes(np.asarray(inf["pilot"])) for inf in infos])
+                analog = np.array([np.asarray(inf["pilot"])[:2] for inf in infos], np.float32)
                 keep = np.flatnonzero(live & np.array([inf.get("racing", False) for inf in infos]))
                 if len(keep):
                     # append while there is room, then replace random old samples (the aggregate
@@ -205,6 +220,7 @@ def run(a):
                     w_t = torch.as_tensor(where, device=dev)
                     X[w_t] = torch.as_tensor(features()[keep], device=dev).half()
                     Y[w_t] = torch.as_tensor(lab[keep], device=dev)
+                    Ya[w_t] = torch.as_tensor(analog[keep], device=dev)
                     n += free
                     seen += len(keep)
             if record:
@@ -233,7 +249,11 @@ def run(a):
             for b in range(0, n, 512):
                 j = perm[b:b + 512]
                 xb, yb = X[j].float(), Y[j]
-                loss = sum(F.cross_entropy(o, yb[:, k]) for k, o in enumerate(net(xb)))
+                outs = net(xb)
+                if a.taps:   # steer/lean regressed on the pilot's continuous command; gas, boost classes
+                    loss = 4.0 * F.mse_loss(outs[4], Ya[j]) + sum(F.cross_entropy(outs[k], yb[:, k]) for k in (2, 3))
+                else:
+                    loss = sum(F.cross_entropy(outs[k], yb[:, k]) for k in range(4))
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
@@ -253,6 +273,8 @@ def run(a):
             ds = torch.load(r0 / "dataset.pt")
             n = len(ds["Y"])
             X[:n], Y[:n] = ds["X"].to(dev), ds["Y"].to(dev)
+            if "Ya" in ds:
+                Ya[:n] = ds["Ya"].to(dev)
             del ds
         else:   # no saved dataset: a fresh round driven by the loaded implant
             while n < a.round_frames:
@@ -298,12 +320,15 @@ def run(a):
                      progress=top["progress"], laps=top["lap"], frames=top["frames"])
             torch.save(net.state_dict(), out / "implant.pt")
         torch.save(net.state_dict(), out / "implant_last.pt")
-        torch.save({"X": X[:n].cpu(), "Y": Y[:n].cpu()}, out / "dataset.pt")
+        torch.save({"X": X[:n].cpu(), "Y": Y[:n].cpu(), "Ya": Ya[:n].cpu()}, out / "dataset.pt")
         if r == a.rounds:
             break
         target = seen + a.round_frames
         while seen < target:
-            drive(a.episode_frames, True, True)
+            # --host-drives: new data only while the natural fly drives (implant off). With the
+            # implant driving, DNs it clamps feed back into the electrodes, and later rounds
+            # learned to echo their own commands (exams fell from 155 to 67 segments)
+            drive(a.episode_frames, not a.host_drives, True)
     fleet.close()
 
 
@@ -322,6 +347,8 @@ def main(argv=None):
     ap.add_argument("--p-grid", type=float, default=0.3)
     ap.add_argument("--exam-frames", type=int, default=16000)
     ap.add_argument("--exam-drives", type=int, default=16)
+    ap.add_argument("--host-drives", action="store_true", help="collect new data with the implant off")
+    ap.add_argument("--taps", action="store_true", help="continuous steer/lean + tap-rate readout (the pilot's hands)")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")
