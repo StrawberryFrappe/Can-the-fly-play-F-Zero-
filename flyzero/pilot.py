@@ -59,6 +59,7 @@ class PilotParams:
     over_speed: float = 1.08     # release gas when faster than this x the human here
     window: int = 60             # points searched around the last match (keeps it on its lap)
     min_speed: float = 300.0     # below this the pilot's steering label is neutral
+    lean_start: float = 0.5      # steering command from which the pilot also leans, like the owner
 
 
 class Pilot:
@@ -103,7 +104,8 @@ class Pilot:
         if v < self.p.min_speed:   # standing (the READY countdown): steering does nothing, so teach none
             u = 0.0
         steer = float(np.clip(u, -1, 1))
-        lean = float(np.sign(u) * np.clip(abs(u) - 1, 0, 1))
+        # lean into sharp turns, like the owner (who leans on ~28% of frames)
+        lean = float(np.sign(u) * np.clip((abs(u) - self.p.lean_start) / max(1.0 - self.p.lean_start, 1e-3), 0, 1))
         gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
         return np.array([steer, lean, gas, 0.0, 0.0], np.float32)
 

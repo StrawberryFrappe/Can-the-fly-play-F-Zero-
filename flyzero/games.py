@@ -26,6 +26,7 @@ SNES_FPS = 60.0988
 RAM_SPEED = 0x0B20    # u16, ~2000 at full speed in the Blue Falcon
 RAM_SEGMENT = 0x0D00  # u8, track segment of the player, 0 .. ~58 on Mute City I, resets at the line
 RAM_LAP = 0x0F53      # u8, laps completed (0..5; 5 = race finished)
+RAM_POWER = 0x00C9    # u16, energy (POWER), 2048 = full; steady while the HUD bar blinks
 
 
 class FZero:
@@ -153,15 +154,19 @@ class FZero:
         ram = self.ram()
         lap, seg = int(ram[RAM_LAP]), int(ram[RAM_SEGMENT])
         speed = int(ram[RAM_SPEED]) | int(ram[RAM_SPEED + 1]) << 8
-        energy = self.energy(frame)
+        # POWER from RAM: the HUD bar blinks when low, so reading it gives 0, 0.15, 0, ...
+        energy = min(1.0, (int(ram[RAM_POWER]) | int(ram[RAM_POWER + 1]) << 8) / 2048.0)
         # no track progress for a while = crashed out ("YOU LOST" leaves speed stuck at 512)
         if seg != self.info.get("segment") or lap != self.info.get("lap"):
             self._last_move = self.frame_no
         stalled = self.frame_no - getattr(self, "_last_move", 0)
-        self._empty = self._empty + 1 if energy < 0.02 else 0  # POWER bar empty: exploding
+        self._empty = self._empty + 1 if energy < 0.02 else 0  # POWER empty: exploding
+        # race HUD gone for a second mid-race: "YOU LOST" (explosion or rank out)
+        self._no_hud = 0 if self.racing(frame) else getattr(self, "_no_hud", 0) + 1
+        out = lap < 5 and self.frame_no > 300 and self._no_hud > 60
         self.info = {"frame": self.frame_no, "lap": lap, "segment": seg, "speed": speed,
-                     "energy": round(energy, 2), "stalled": stalled,
-                     "done": lap >= 5 or stalled > 600 or self._empty > 90}
+                     "energy": round(energy, 3), "stalled": stalled,
+                     "done": lap >= 5 or stalled > 600 or self._empty > 90 or out}
         return frame
 
 

@@ -148,3 +148,18 @@ def test_consolidated_weights_average_and_swap_back():
     np.testing.assert_allclose(cp.asnumpy(gb.pw), fast_w)
     np.testing.assert_allclose(cp.asnumpy(gb.bias_ext), fast_b)
     np.testing.assert_allclose(cp.asnumpy(bi.ib), fast_ib, atol=1e-6)
+
+
+def test_tap_readout_duty_cycle():
+    from flyzero import connectome as cx
+    from flyzero.batch import BatchMotor
+    from flyzero.motor import MotorParams
+
+    m = BatchMotor(cx.synthetic(), 1, MotorParams(taps=True))
+    def presses(steer_hz, n=200):
+        m.reset()
+        r = np.zeros(9, np.float32); r[0] = steer_hz   # DNa02 left above right: steer left
+        return sum(m.buttons(r)["LEFT"] for _ in range(n)) / n
+    assert presses(5.0) == 0.0                          # inside the threshold: no taps
+    assert abs(presses(85.0) - 0.5) < 0.02              # (85 - 10) / 150 = half the frames
+    assert presses(400.0) == 1.0                        # beyond the span: held

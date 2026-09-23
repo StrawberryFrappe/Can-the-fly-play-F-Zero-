@@ -43,6 +43,12 @@ class MotorParams:
     accel_threshold: float = 5.0  # Hz, DNp09 rate to hold the throttle
     brake_threshold: float = 15.0
     boost_threshold: float = 1.0
+    # taps instead of holds (GPU fleet, ``batch.BatchMotor``): the D-pad / shoulder duty cycle
+    # grows with the left-right difference beyond the threshold, full at threshold + span
+    # (160 Hz is a full instructed turn, 80 Hz a full lean), like the owner's tapping
+    taps: bool = False
+    steer_span: float = 150.0
+    lean_span: float = 70.0
     groups: dict = field(default_factory=lambda: {
         "steer_left": ("DNa02", "left"),
         "steer_right": ("DNa02", "right"),

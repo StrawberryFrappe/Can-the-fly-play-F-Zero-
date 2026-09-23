@@ -22,10 +22,11 @@ BIAS_TYPES = ("DNa02", "DNg02*", "DNa01", "DNp09")
 class Fleet:
     def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=None,
                  bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
-                 deep: bool = False):
+                 deep: bool = False, taps: bool = False):
         """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
         ``deep``: also make the synapses onto the DNs' presynaptic partners plastic.
-        ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber)."""
+        ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber).
+        ``taps``: the readout taps the D-pad / shoulders at a rate set by the DNs (``MotorParams``)."""
         from . import connectome as cx
         from .batch import BatchMotor, plastic_positions
         from .biology import corrected
@@ -47,7 +48,9 @@ class Fleet:
         self.brain = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=batch, seed=seed, plastic_pos=self.pos)
         v = dict(VISION)
         self.eye = MotionEye(conn, (224, 256), MotionParams(gain=10 ** v.pop("log_gain"), **v))
-        self.motor = BatchMotor(conn, batch)
+        from .motor import MotorParams
+
+        self.motor = BatchMotor(conn, batch, MotorParams(taps=taps))
         self.bias_idx = np.concatenate([conn.find(t) for t in BIAS_TYPES])
         self.bias_mv = bias_mv
         self.brain.set_bias(self.bias_idx, bias_mv)

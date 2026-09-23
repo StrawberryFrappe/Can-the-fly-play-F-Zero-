@@ -94,28 +94,44 @@ class BatchMotor:
         m[np.arange(len(g)), g] = 1.0 / np.maximum(self.size[g], 1)
         self.avg = cp.asarray(m)
         self.rates = np.zeros((batch, len(READOUT)), np.float32)
+        self.acc = np.zeros((batch, 2))   # sigma-delta accumulators for taps (steer, lean)
 
     def reset(self, slots=None):
         if slots is None:
             self.rates[:] = 0
+            self.acc[:] = 0
         else:
             self.rates[np.atleast_1d(slots)] = 0
+            self.acc[np.atleast_1d(slots)] = 0
 
     def update(self, counts: cp.ndarray, window_ms: float) -> list[dict]:
         a = 1.0 - np.exp(-window_ms / self.p.tau_ms)
         inst = cp.asnumpy(counts[:, self.idx].astype(cp.float32) @ self.avg) * (1000.0 / window_ms)
         self.rates += a * (inst - self.rates)
-        return [self.buttons(r) for r in self.rates]
+        return [self.buttons(r, k) for k, r in enumerate(self.rates)]
 
-    def buttons(self, r) -> dict:
+    def _tap(self, k, j, x, threshold, span):
+        """+1 (left), -1 (right) or 0 this frame; duty = (|x| - threshold) / span."""
+        duty = np.sign(x) * np.clip((abs(x) - threshold) / span, 0.0, 1.0)
+        self.acc[k, j] += duty
+        t = 1 if self.acc[k, j] >= 0.5 else -1 if self.acc[k, j] <= -0.5 else 0
+        self.acc[k, j] -= t
+        return t
+
+    def buttons(self, r, k: int = 0) -> dict:
         p = self.p
         steer = (r[0] - r[1]) + (r[5] - r[4]) + p.steer_bias
         lean = r[2] - r[3]
         b = {k: False for k in BUTTONS}
-        b["LEFT"] = bool(steer > p.steer_threshold)
-        b["RIGHT"] = bool(steer < -p.steer_threshold)
-        b["L"] = bool(lean > p.lean_threshold)
-        b["R"] = bool(lean < -p.lean_threshold)
+        if p.taps:
+            s, le = self._tap(k, 0, steer, p.steer_threshold, p.steer_span), \
+                self._tap(k, 1, lean, p.lean_threshold, p.lean_span)
+            b["LEFT"], b["RIGHT"], b["L"], b["R"] = s > 0, s < 0, le > 0, le < 0
+        else:
+            b["LEFT"] = bool(steer > p.steer_threshold)
+            b["RIGHT"] = bool(steer < -p.steer_threshold)
+            b["L"] = bool(lean > p.lean_threshold)
+            b["R"] = bool(lean < -p.lean_threshold)
         b["B"] = bool(r[6] > p.accel_threshold)
         b["Y"] = bool(r[7] > p.brake_threshold)
         b["A"] = bool(r[8] > p.boost_threshold)

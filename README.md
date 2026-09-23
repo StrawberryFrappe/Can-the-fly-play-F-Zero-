@@ -207,6 +207,38 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
         the mirror world;
       * the giant fiber runs away to 300 Hz (so it is instructed too, quiet unless boosting);
       * wall scraping that drains the energy.
+17. **Three things that were ours, not the fly's.**
+    * **The pilot taught "hold left" at the start.** During the READY countdown the car can't
+      move, but it sits off the racing line, so the pilot's label said full left + lean for 6 s.
+      The flies learned it, held LEFT through the countdown and hit the wall at GO. Now the
+      label is neutral while the car stands. This one fix took the mean exam from about 6 to
+      about 45 segments.
+    * **Learning rates high enough to steer.** With about 0.15 mV of change per synapse per
+      frame, the plasticity itself acted like a controller during training. The weights chased
+      the last few seconds of labels, so training error looked good but a frozen snapshot
+      didn't generalise.
+      * Lowering the rate 10× made that visible: the training error went *up*.
+      * Cure: **consolidated weights**, a slow average of each synapse (fast/slow synapses,
+        cf. Benna & Fusi 2016). Exams drive with the slow copy.
+    * **Replays were off by one frame**, which made a good drive look like a crash.
+18. **Intrinsic plasticity and a hard-corner curriculum** (still the fly's own neurons). Each
+    instructed DN's excitability follows its error within ±8 mV; it counters the connectome's
+    own left/right DNa02 asymmetry. Most crashes happened at one sharp corner (segment ~40), so
+    training drives now start more often just before recent crash spots, like an instructor
+    drilling a bend.
+19. **Fly vs AI** (exam = solo from the grid, full race):
+
+    | Driver | What it learned from | Best drive |
+    |---|---|---|
+    | untrained corrected fly | — | 1–2 segments |
+    | fly, human lessons only (step 11) | owner's races | 7 |
+    | CNN, behaviour cloning | owner's 10 races | 3 |
+    | CNN, DAgger | pilot (same teacher as the fly) | 157 (2.7 laps) |
+    | **fly, deep plasticity + DAgger** | owner's races, then the pilot | **178 (3 laps)** |
+    | pilot (reference; reads RAM) | owner's fastest lap | 5 laps |
+
+    With the same teacher, the fly and a standard network are about even so far. Neither
+    has finished: both run out of energy from wall contact.
 
 ### Earlier findings
 
