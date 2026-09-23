@@ -5,3 +5,5 @@ __pycache__/
 *.state
 *.mp4
 .pytest_cache/
+.venv/
+*.blend1
