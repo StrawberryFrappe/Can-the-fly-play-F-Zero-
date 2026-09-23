@@ -31,7 +31,7 @@ import numpy as np
 CLAMP_GROUPS = ["a02L", "a02R", "g02L", "g02R", "a01L", "a01R", "gas", "brake", "gf"]
 
 
-def electrodes(conn, decode_file: str | None = "work/decode_data.npz") -> np.ndarray:
+def electrodes(conn, decode_file: str | None = "work/decode_data.npz", l2_top: int = 0) -> np.ndarray:
     """L1 (inputs of the motor DNs) and visual projection neurons; with a recording of the fly
     driving, only the ones that fired (the others carry nothing and cost memory)."""
     from .batch import plastic_positions
@@ -46,6 +46,14 @@ def electrodes(conn, decode_file: str | None = "work/decode_data.npz") -> np.nda
         d = np.load(decode_file)
         active = d["keep"][d["X"].sum(0) > 20]
         idx = np.intersect1d(idx, active)
+        if l2_top:   # plus the L2 neurons (inputs of L1) whose rates follow the pilot's steering best
+            keep, X = d["keep"], d["X"]
+            cols = np.searchsorted(keep, np.setdiff1d(d["l2"], idx))
+            cols = cols[X[:, cols].sum(0) > 20]
+            steer = np.convolve(d["Y"][:, 0], np.ones(15) / 15, "same")
+            k = np.ones(5) / 5
+            r = np.array([abs(np.corrcoef(np.convolve(X[:, c].astype(float), k, "same"), steer)[0, 1]) for c in cols])
+            idx = np.union1d(idx, keep[cols[np.argsort(-np.nan_to_num(r))[:l2_top]]])
     return idx
 
 
@@ -134,7 +142,7 @@ def run(a):
     fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True)
     host = BatchInstruct(fleet.brain, fleet.conn)
     host.load(np.load(a.host))                     # the natural fly, unchanged from here on
-    idx = electrodes(fleet.conn)
+    idx = electrodes(fleet.conn, l2_top=a.l2_top)
     d_idx = cp.asarray(idx)
     print(f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
     clamp = Clamp(fleet)
@@ -314,6 +322,7 @@ def main(argv=None):
     ap.add_argument("--p-grid", type=float, default=0.3)
     ap.add_argument("--exam-frames", type=int, default=16000)
     ap.add_argument("--exam-drives", type=int, default=16)
+    ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")
     ap.add_argument("--out", required=True)
