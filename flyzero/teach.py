@@ -129,11 +129,11 @@ def _worker(args):
             flip = mirror and rng.random() < 0.5  # mirror world: flipped view, swapped buttons
             frame = start(state)
             smooth_intent = intent(masks, BUTTONS, smooth) if smooth else None
-            for t, (m, is_racing) in enumerate(zip(masks, racing)):
+            for ti, (m, is_racing) in enumerate(zip(masks, racing)):
                 teacher = mask_to_buttons(m)
                 seen = frame[:, ::-1] if flip else frame
                 if smooth:
-                    x = smooth_intent[t].copy()
+                    x = smooth_intent[ti].copy()
                     if flip:
                         x[:2] = -x[:2]
                     lesson = targets_from_intent(x, plast.p)

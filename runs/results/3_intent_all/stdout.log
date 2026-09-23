@@ -1,0 +1,29 @@
+{"fly": 2, "eta": 0.003, "epoch": 0, "exam": {"mean_progress": 1.0, "best": 1, "mean_frames": 708, "laps": 0}}
+{"fly": 0, "eta": 0.0003, "epoch": 0, "exam": {"mean_progress": 1.0, "best": 1, "mean_frames": 775, "laps": 0}}
+{"fly": 3, "eta": 0.01, "epoch": 0, "exam": {"mean_progress": 1.0, "best": 1, "mean_frames": 1006, "laps": 0}}
+{"fly": 1, "eta": 0.001, "epoch": 0, "exam": {"mean_progress": 1.7, "best": 3, "mean_frames": 1205, "laps": 0}}
+{"fly": 1, "eta": 0.001, "epoch": 1, "err_hz": 8.93, "drift": 0.0819, "exam": {"mean_progress": 1.3, "best": 4, "mean_frames": 1019, "laps": 0}, "mins": 29834513.2}
+{"fly": 1, "eta": 0.001, "practice": 1, "progress": -1, "frames": 746, "reward": -138.5, "mins": 0.7}
+{"fly": 0, "eta": 0.0003, "epoch": 1, "err_hz": 10.19, "drift": 0.0723, "exam": {"mean_progress": 4.7, "best": 7, "mean_frames": 1312, "laps": 0}, "mins": 29834514.4}
+{"fly": 1, "eta": 0.001, "practice": 2, "progress": 2, "frames": 1017, "reward": -85.1, "mins": 1.0}
+{"fly": 0, "eta": 0.0003, "practice": 1, "progress": 3, "frames": 682, "reward": 10.1, "mins": 0.7}
+{"fly": 3, "eta": 0.01, "epoch": 1, "err_hz": 8.96, "drift": 0.1076, "exam": {"mean_progress": 0.3, "best": 1, "mean_frames": 1007, "laps": 0}, "mins": 29834515.1}
+{"fly": 1, "eta": 0.001, "practice": 3, "progress": -2, "frames": 787, "reward": -223.4, "mins": 0.8}
+{"fly": 0, "eta": 0.0003, "practice": 2, "progress": 4, "frames": 970, "reward": 35.4, "mins": 1.0}
+{"fly": 3, "eta": 0.01, "practice": 1, "progress": 1, "frames": 1254, "reward": 30.7, "mins": 1.3}
+{"fly": 1, "eta": 0.001, "practice": 4, "progress": -2, "frames": 1098, "reward": -253.5, "mins": 1.1}
+{"fly": 0, "eta": 0.0003, "practice": 3, "progress": 3, "frames": 906, "reward": -32.0, "mins": 0.9}
+{"fly": 3, "eta": 0.01, "practice": 2, "progress": 1, "frames": 716, "reward": 39.7, "mins": 0.7}
+{"fly": 0, "eta": 0.0003, "practice": 4, "progress": 10, "frames": 980, "reward": 210.7, "mins": 0.9}
+{"fly": 3, "eta": 0.01, "practice": 3, "progress": 3, "frames": 1736, "reward": -160.4, "mins": 1.7}
+{"fly": 1, "eta": 0.001, "practice": 5, "progress": -6, "frames": 1113, "reward": -421.6, "mins": 1.1, "exam": {"mean_progress": -0.3, "best": 4, "mean_frames": 648, "laps": 0}}
+{"fly": 3, "eta": 0.01, "practice": 4, "progress": 1, "frames": 1481, "reward": -303.1, "mins": 1.5}
+{"fly": 1, "eta": 0.001, "practice": 6, "progress": -2, "frames": 709, "reward": -187.1, "mins": 0.7}
+{"fly": 1, "eta": 0.001, "practice": 7, "progress": -2, "frames": 777, "reward": -194.5, "mins": 0.7}
+{"fly": 1, "eta": 0.001, "practice": 8, "progress": 1, "frames": 725, "reward": -88.0, "mins": 0.7}
+{"fly": 0, "eta": 0.0003, "practice": 5, "progress": 2, "frames": 711, "reward": -71.9, "mins": 0.7, "exam": {"mean_progress": 3.7, "best": 5, "mean_frames": 1216, "laps": 0}}
+{"fly": 1, "eta": 0.001, "practice": 9, "progress": 0, "frames": 933, "reward": -199.3, "mins": 0.9}
+{"fly": 0, "eta": 0.0003, "practice": 6, "progress": -2, "frames": 843, "reward": -182.0, "mins": 0.8}
+{"fly": 2, "eta": 0.003, "epoch": 1, "err_hz": 8.92, "drift": 0.0933, "exam": {"mean_progress": 2.7, "best": 4, "mean_frames": 1561, "laps": 0}, "mins": 29834523.5}
+/usr/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 6 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

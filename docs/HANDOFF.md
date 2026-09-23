@@ -30,7 +30,8 @@ Exam = drive Mute City I alone from the start line for 60 s. The score is track 
 | untrained fly (corrected brain, bias drive) | 1–1.7, stalls or crashes in < 20 s |
 | fly, exact-tap lessons, 5 races, 1 epoch | −2 … 4 (one lucky 20 on a single-race run) |
 | CNN baseline, 5 races | 3, then stuck |
-| fly, intent lessons, all 10 races, 1 epoch | **was finishing when the session ended**, see below |
+| fly, intent lessons, all 10 races, 1 epoch (3 drives averaged) | **best fly 0 (eta 3e-4): mean 4.7, best 7**; others 0.3–2.7. Error vs teacher 9–10 Hz (taps gave 12–18) |
+| + 5 practice drives | no clear change (fly 0: 3.7, fly 1: −0.3) |
 | CNN rematch, all 10 races + mirroring | stopped at epoch 7/10 (held-out steer ≈ 50%); rerun on GPU, takes minutes |
 
 ### Key findings (details in the README lab notebook)
@@ -59,13 +60,16 @@ Exam = drive Mute City I alone from the start line for 60 s. The score is track 
   * hugs the walls.
 * **Exam noise is large.** The same fly swings −4 … 20. Average several drives (the exam now does 3).
 
-### What was running at handoff
+### State at handoff
 
-`teach` over all 10 races: 4 flies with learning rates 3e-4, 1e-3, 3e-3 and 1e-2, intent
-lessons, mirroring, racing frames only, then 40 practice drives each. The lessons epoch (about
-3.3 h on 4 cores) was meant to finish and its weights (`taught_fly{k}_epoch1.npz`) be copied
-into `runs/results/3_intent_all/` before the container was stopped. **Check that folder.** If
-the weights are there, resume with practice only (below). If not, rerun the lessons.
+`teach` over all 10 races finished its lessons epoch: 4 flies with learning rates 3e-4, 1e-3,
+3e-3 and 1e-2, intent lessons, mirroring, racing frames only. It was stopped after the first 5
+of 40 practice drives. All weights and logs are in `runs/results/3_intent_all/`:
+* `taught_fly{k}_epoch1.npz`: after the lessons;
+* `taught_fly{0,1}_practice5.npz`: after 5 practice drives.
+
+The most promising starting point is **`taught_fly0_epoch1.npz`** (lowest learning rate, best
+exam). Resume with practice only (below).
 
 ## Setting up the new machine
 
@@ -99,7 +103,7 @@ the weights are there, resume with practice only (below). If not, rerun the less
 
 ```
 # the fly: practice from the taught weights (one process per learning rate; use as many as you have cores)
-flyzero teach --rom "F-Zero (USA).sfc" --lessons lessons_all.npz --exam start.state --epochs 0 --practice 40 --etas 1e-3,1e-3,1e-3,1e-3 --init runs/results/3_intent_all/taught_fly1_epoch1.npz --out taught_practice
+flyzero teach --rom "F-Zero (USA).sfc" --lessons lessons_all.npz --exam start.state --epochs 0 --practice 40 --etas 1e-3,1e-3,1e-3,1e-3 --init runs/results/3_intent_all/taught_fly0_epoch1.npz --out taught_practice
 
 # or the full thing from scratch (lessons: ~3 h per epoch on 4 cores; faster with more)
 flyzero teach --rom "F-Zero (USA).sfc" --lessons lessons_all.npz --exam start.state --epochs 1 --practice 40 --out taught_all

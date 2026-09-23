@@ -158,6 +158,19 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     side is stimulated. There's no side-specific avoidance to hook into. Many different inputs
     converge on the left DNa02.
 
+11. **Learning from the owner's races** (`flyzero record` → `lessons` → `teach`). 10 human races
+    (about 145 k frames: 7× Mute City I, Big Blue, Sand Ocean, the Queen League Grand Prix)
+    teach the motor synapses by instructed learning (delta rule, Dale's law kept).
+    * **Exact taps** made the fly match the teacher better in lessons (error 20 → 12 Hz) but not
+      drive better solo. That's compounding error: one slip and it's somewhere the teacher never was.
+    * **Smoothed intent** (~0.25 s) is matched much better (9–10 Hz). The best fly averages
+      4.7 segments (best 7) of 59, still far from a lap.
+    * **A standard CNN on the same races does no better** (3 segments, below-baseline held-out
+      accuracy with 5 races).
+
+    Next: reward **practice** after the lessons, DAgger-style corrections, and plasticity one
+    layer deeper. See `docs/HANDOFF.md`.
+
 ### Earlier findings
 
 * **Photoreceptors don't work as an input.** Driving all 10,582 photoreceptors activates about
