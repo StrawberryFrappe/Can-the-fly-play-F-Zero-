@@ -155,6 +155,27 @@ class _Plastic:
             w = self.brain.pw[:, sel] + per_fly[self._fos]
             self.brain.pw[:, sel] = sign * cp.clip(sign * w, 0.0, self.wmax[sel])
 
+    # consolidation: a slow copy of every plastic synapse (and of the DNs' intrinsic biases)
+    # follows the fast, online-learning one (fast/slow synapses, cf. Benna & Fusi 2016). The
+    # slow copy averages out the online chasing of whatever the fly saw last.
+    def consolidate(self, rate: float):
+        if getattr(self, "_slow", None) is None:
+            self._slow = (self.brain.pw.copy(), self.brain.bias_ext.copy())
+        self._slow[0][...] += np.float32(rate) * (self.brain.pw - self._slow[0])
+        self._slow[1][...] += np.float32(rate) * (self.brain.bias_ext - self._slow[1])
+
+    def swap_slow(self):
+        """Exchange the fast and the consolidated weights (call again to swap back)."""
+        if getattr(self, "_slow", None) is None:
+            return
+        pw, bias = self._slow
+        fast = (self.brain.pw.copy(), self.brain.bias_ext.copy())
+        self.brain.pw[...] = pw
+        self.brain.bias_ext[...] = bias
+        self._slow = fast
+        if getattr(self, "ib", None) is not None:   # keep the intrinsic-bias bookkeeping in step
+            self.ib += (bias - fast[1])[:, self.dn_slots]
+
     def state(self, fly: int) -> dict:
         slot = int(np.flatnonzero(self.fly_of_slot == fly)[0])
         st = {"pos": self.brain.plastic_pos.astype(np.int32), "data": cp.asnumpy(self.brain.pw[slot]),

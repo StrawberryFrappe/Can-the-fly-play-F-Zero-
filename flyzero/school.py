@@ -176,8 +176,12 @@ def dagger(a):
         return targets(x, ip.p)
 
     def exam_now(tag):
-        return run_exam(fleet, ip, exam_state, a.exam_frames, range(len(etas)), a.drives,
-                        save=str(Path(a.out) / f"best_{tag}"))
+        ip.swap_slow()   # exams use the consolidated weights (a no-op without --consolidate)
+        try:
+            return run_exam(fleet, ip, exam_state, a.exam_frames, range(len(etas)), a.drives,
+                            save=str(Path(a.out) / f"best_{tag}"))
+        finally:
+            ip.swap_slow()
 
     _log(a.out, {"frames": 0, "exam": exam_now(0), "etas": etas})
     rates = np.zeros((B, len(fleet.eye.idx)), np.float32)
@@ -197,6 +201,8 @@ def dagger(a):
         tgt = np.array([label(inf, k) for k, inf in enumerate(infos)], np.float32)
         learn = np.array([inf.get("racing", False) for inf in infos])
         err = ip.step(counts, tgt, learn, fleet.window, eta=eta_slot)
+        if a.consolidate > 0:
+            ip.consolidate(1.0 / a.consolidate)
         stats["err"].append(float(err[learn].mean()) if learn.any() else 0.0)
         rates, infos = fleet.pool.step(buttons)
         age += 1
@@ -228,8 +234,10 @@ def dagger(a):
                    "drift": np.round(ip.drift(), 4).tolist(), "mins": round((time.time() - t) / 60, 1),
                    "exam": exam_now(total)}
             stats = {"frames": 0, "err": [], "restores": 0, "new": 0, "progress": []}
-            for f in range(len(etas)):
+            ip.swap_slow()
+            for f in range(len(etas)):   # the consolidated weights (= the fast ones without it)
                 np.savez_compressed(Path(a.out) / f"fly{f}_f{total}.npz", **ip.state(f))
+            ip.swap_slow()
             _log(a.out, rec)
             # the exam moved every slot: start fresh drives
             for k in range(B):
@@ -287,6 +295,8 @@ def main(argv=None):
     dg.add_argument("--p-grid", type=float, default=0.25)
     dg.add_argument("--eta-bias", type=float, default=0.0,
                     help="intrinsic plasticity of the instructed DNs (mV per Hz of error per frame)")
+    dg.add_argument("--consolidate", type=float, default=0.0,
+                    help="time constant (frames) of the slow, consolidated weights used for exams; 0 = off")
     dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
     dg.add_argument("--exam-frames", type=int, default=12000)
     dg.add_argument("--exam-every", type=int, default=200_000)

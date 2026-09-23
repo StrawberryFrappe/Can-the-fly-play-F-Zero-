@@ -125,3 +125,26 @@ def test_intrinsic_plasticity_moves_bias_towards_target_and_round_trips():
     gb2.set_bias(conn.find("DNp09"), 7.8)
     BatchInstruct(gb2, conn).load(st)
     np.testing.assert_allclose(cp.asnumpy(gb2.bias_ext[0, gb2.slots(bi.dn)]), after[0], atol=1e-5)
+
+
+def test_consolidated_weights_average_and_swap_back():
+    from flyzero import connectome as cx
+    from flyzero.batch import BatchInstruct, plastic_positions
+
+    conn = cx.synthetic()
+    gb = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=1, plastic_pos=plastic_positions(conn))
+    bi = BatchInstruct(gb, conn, eta_bias=0.01)
+    w0, b0 = cp.asnumpy(gb.pw).copy(), cp.asnumpy(gb.bias_ext).copy()
+    bi.consolidate(0.5)                        # slow copy starts at the current weights
+    gb.pw[...] *= 0.5
+    bi.ib += 1.0
+    gb.bias_ext[:, bi.dn_slots] += 1.0
+    bi.consolidate(0.5)                        # slow = halfway between old and new
+    fast_w, fast_b, fast_ib = cp.asnumpy(gb.pw).copy(), cp.asnumpy(gb.bias_ext).copy(), cp.asnumpy(bi.ib).copy()
+    bi.swap_slow()
+    np.testing.assert_allclose(cp.asnumpy(gb.pw), 0.75 * w0, rtol=1e-6)
+    np.testing.assert_allclose(cp.asnumpy(bi.ib), fast_ib - 0.5, atol=1e-6)
+    bi.swap_slow()
+    np.testing.assert_allclose(cp.asnumpy(gb.pw), fast_w)
+    np.testing.assert_allclose(cp.asnumpy(gb.bias_ext), fast_b)
+    np.testing.assert_allclose(cp.asnumpy(bi.ib), fast_ib, atol=1e-6)
