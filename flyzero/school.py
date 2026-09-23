@@ -281,6 +281,36 @@ def _step_scaled(rp, counts, reward, learn, window, eta_slot):
         rp.apply(scale * rp.elig, learn)
 
 
+def attempts(a):
+    """Many solo races from the grid with one set of weights; every finished race is saved.
+    Nothing learns. Reports how many of the attempts finished (the honest success rate)."""
+    from .batch import BatchInstruct
+    from .fleet import Fleet
+    from .live import save_run
+
+    w = np.load(a.weights)
+    fleet = Fleet(a.rom, a.batch, seed=a.seed, deep=a.deep, taps=bool(w.get("taps", False)),
+                  steer_span=float(w.get("steer_span", 150.0)), lean_span=float(w.get("lean_span", 70.0)))
+    BatchInstruct(fleet.brain, fleet.conn).load(w)
+    start = Path(a.exam).read_bytes()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    done, results = 0, []
+    while done < a.drives:
+        res = fleet.exam(start, a.exam_frames, record=True)
+        for r in res[:a.drives - done]:
+            done += 1
+            if r["finished"] or r["progress"] >= a.keep:
+                tag = "finish" if r["finished"] else f"p{r['progress']}"
+                save_run(out / f"attempt{done}_{tag}.npz", start, r["masks"], r["rates"], "fly",
+                         progress=r["progress"], laps=r["lap"], frames=r["frames"], weights=a.weights)
+            results.append({k: v for k, v in r.items() if k not in ("masks", "rates")})
+        fin = sum(r["finished"] for r in results)
+        _log(a.out, {"attempts": done, "finished": fin, "laps": [r["lap"] for r in results[-a.batch:]],
+                     "progress": [r["progress"] for r in results[-a.batch:]]})
+    fleet.close()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -319,16 +349,27 @@ def main(argv=None):
     dg.add_argument("--steer-span", type=float, default=150.0, help="taps: Hz beyond threshold for a full hold")
     dg.add_argument("--lean-span", type=float, default=70.0)
     dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
-    dg.add_argument("--exam-frames", type=int, default=12000)
+    dg.add_argument("--exam-frames", type=int, default=16000, help="a slow 5-lap race takes ~13,500 frames")
     dg.add_argument("--exam-every", type=int, default=200_000)
     dg.add_argument("--drives", type=int, default=2, help="exam drives per fly")
     dg.add_argument("--eta-deep", default="0",
                     help="deep plasticity (synapses onto the DNs' inputs), learning rate relative to eta")
     dg.add_argument("--seed", type=int, default=0)
     dg.add_argument("--out", required=True)
+    at = sub.add_parser("attempts")
+    at.add_argument("--rom", default="F-Zero (USA).sfc")
+    at.add_argument("--exam", default="start.state")
+    at.add_argument("--weights", required=True)
+    at.add_argument("--deep", action="store_true")
+    at.add_argument("--drives", type=int, default=64)
+    at.add_argument("--batch", type=int, default=8)
+    at.add_argument("--exam-frames", type=int, default=16000)
+    at.add_argument("--keep", type=int, default=150, help="also save drives with at least this progress")
+    at.add_argument("--seed", type=int, default=0)
+    at.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     Path(a.out).mkdir(parents=True, exist_ok=True)
-    {"practice": practice, "dagger": dagger}[a.cmd](a)
+    {"practice": practice, "dagger": dagger, "attempts": attempts}[a.cmd](a)
 
 
 if __name__ == "__main__":
