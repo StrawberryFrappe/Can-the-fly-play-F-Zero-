@@ -50,6 +50,7 @@ class LearnParams:
     w_progress: float = 20.0  # per track segment (59 per lap)
     w_reverse: float = 60.0   # going the wrong way is horrible
     w_crash: float = 100.0    # per full energy bar lost (a wall hit costs ~5)
+    w_rank: float = 0.0       # per race position lost (gained positions count positive)
 
 
 @dataclass
@@ -76,10 +77,13 @@ class Reward:
         if self.above > 30:
             self.floor, self.above = energy, 0
         self.last_seg = seg
+        rank = info.get("rank")
+        dr = 0 if rank is None or getattr(self, "last_rank", None) is None else rank - self.last_rank
+        self.last_rank = rank
         speed = min(info["speed"], TOP_SPEED) / TOP_SPEED if info["speed"] != 512 or energy > 0 else 0.0
         self.parts = {"speed": speed, "fwd": max(d, 0), "rev": max(-d, 0), "crash": lost}
         return (self.p.w_speed * speed + self.p.w_progress * max(d, 0)
-                - self.p.w_reverse * max(-d, 0) - self.p.w_crash * lost)
+                - self.p.w_reverse * max(-d, 0) - self.p.w_crash * lost - self.p.w_rank * dr)
 
 
 class RewardPlasticity:

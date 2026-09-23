@@ -70,16 +70,23 @@ def practice(a):
 
     etas = [float(e) for e in a.etas.split(",")]
     fos = np.repeat(np.arange(len(etas)), a.batch // len(etas))
-    fleet = Fleet(a.rom, len(fos), seed=a.seed)
-    rp = BatchReward(fleet.brain, fleet.conn, LearnParams(), fly_of_slot=fos, seed=a.seed)
+    fleet = Fleet(a.rom, len(fos), seed=a.seed, deep=a.deep)
+    rp = BatchReward(fleet.brain, fleet.conn, LearnParams(w_rank=a.w_rank), fly_of_slot=fos, seed=a.seed)
     if a.init:
         rp.load(np.load(a.init))
     heat = fleet.conn.find("TRN_VP2")
     fleet.extra_idx = np.r_[rp.targets, heat]
     exam_state = Path(a.exam).read_bytes()
     eta_slot = np.array(etas)[fos]
-    res = run_exam(fleet, rp, exam_state, a.exam_frames, range(len(etas)), a.drives)
-    _log(a.out, {"drive": 0, "exam": res})
+    def exam_now(tag):
+        rp.swap_slow()   # consolidated weights (no-op without --consolidate)
+        try:
+            return run_exam(fleet, rp, exam_state, a.exam_frames, range(len(etas)), a.drives,
+                            save=str(Path(a.out) / f"best_{tag}"))
+        finally:
+            rp.swap_slow()
+
+    _log(a.out, {"drive": 0, "exam": exam_now(0)})
     for ep in range(1, a.drives_total + 1):
         t = time.time()
         fleet.brain.reset()
@@ -110,14 +117,18 @@ def practice(a):
                     live[k] = False
             total += r
             _step_scaled(rp, counts, r, live.copy(), fleet.window, eta_slot)
+            if a.consolidate > 0:
+                rp.consolidate(1.0 / a.consolidate)
             if not live.any():
                 break
         rec = {"drive": ep, "progress": [p.total for p in progs], "reward": np.round(total, 1).tolist(),
                "drift": np.round(rp.drift(), 4).tolist(), "secs": round(time.time() - t)}
         if ep % a.exam_every == 0:
-            rec["exam"] = run_exam(fleet, rp, exam_state, a.exam_frames, range(len(etas)), a.drives)
+            rec["exam"] = exam_now(ep)
+            rp.swap_slow()
             for f in range(len(etas)):
                 np.savez_compressed(Path(a.out) / f"fly{f}_drive{ep}.npz", **rp.state(f))
+            rp.swap_slow()
         _log(a.out, rec)
     fleet.close()
 
@@ -322,7 +333,10 @@ def main(argv=None):
     pr.add_argument("--batch", type=int, default=8)
     pr.add_argument("--drives-total", type=int, default=100)
     pr.add_argument("--practice-frames", type=int, default=2400)
-    pr.add_argument("--exam-frames", type=int, default=3600)
+    pr.add_argument("--exam-frames", type=int, default=16000)
+    pr.add_argument("--deep", action="store_true", help="also the synapses onto the DNs' inputs")
+    pr.add_argument("--w-rank", type=float, default=0.0, help="reward per race position gained")
+    pr.add_argument("--consolidate", type=float, default=0.0)
     pr.add_argument("--exam-every", type=int, default=10)
     pr.add_argument("--drives", type=int, default=4, help="exam drives per fly")
     pr.add_argument("--seed", type=int, default=0)
