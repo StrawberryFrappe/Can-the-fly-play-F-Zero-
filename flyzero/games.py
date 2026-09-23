@@ -27,6 +27,7 @@ RAM_SPEED = 0x0B20    # u16, ~2000 at full speed in the Blue Falcon
 RAM_SEGMENT = 0x0D00  # u8, track segment of the player, 0 .. ~58 on Mute City I, resets at the line
 RAM_LAP = 0x0F53      # u8, laps completed (0..5; 5 = race finished)
 RAM_POWER = 0x00C9    # u16, energy (POWER), 2048 = full; steady while the HUD bar blinks
+RAM_RANK = 0x0DC8     # u8, race position (as the HUD's RANK; checked against SAFE at every lap line)
 
 
 class FZero:
@@ -165,7 +166,7 @@ class FZero:
         self._no_hud = 0 if self.racing(frame) else getattr(self, "_no_hud", 0) + 1
         out = lap < 5 and self.frame_no > 300 and self._no_hud > 60
         self.info = {"frame": self.frame_no, "lap": lap, "segment": seg, "speed": speed,
-                     "energy": round(energy, 3), "stalled": stalled,
+                     "energy": round(energy, 3), "stalled": stalled, "rank": int(ram[RAM_RANK]),
                      "done": lap >= 5 or stalled > 600 or self._empty > 90 or out}
         return frame
 

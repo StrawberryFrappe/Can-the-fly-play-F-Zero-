@@ -105,7 +105,8 @@ class Fleet:
                 if info["done"] or i == frames - 1:
                     done[k] = True
                     res[k] = {"progress": progs[k].total, "lap": info["lap"], "frames": i + 1,
-                              "energy": info["energy"], "finished": info["lap"] >= 5}
+                              "energy": info["energy"], "finished": info["lap"] >= 5,
+                              "rank": info.get("rank")}
                     if record:
                         res[k]["masks"], res[k]["rates"] = np.array(masks[k]), np.array(dn[k])
             if on_frame:

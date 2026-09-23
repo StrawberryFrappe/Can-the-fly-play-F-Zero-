@@ -95,7 +95,7 @@ def _state(i, buttons, rates, info, finish, sim_fps=None):
     st = {"i": i, "buttons": [b for b, v in buttons.items() if v],
           "rates": {k: round(float(v), 1) for k, v in zip(READOUT, rates)},
           "lap": int(info.get("lap", 0)), "race_frames": i, "energy": float(info.get("energy", 1.0)),
-          "speed": int(info.get("speed", 0))}
+          "speed": int(info.get("speed", 0)), "rank": info.get("rank")}
     if finish:
         st["finish_frames"] = finish
     if sim_fps is not None:
