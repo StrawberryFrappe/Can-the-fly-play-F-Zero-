@@ -55,11 +55,14 @@ class PilotParams:
     look_base: float = 160.0     # map units ahead at standstill
     look_per_speed: float = 0.06  # extra look-ahead per unit of speed
     kp: float = 3.0              # steering per radian of heading error to the look-ahead point
-    kd: float = 20.0             # damping: steering per radian/frame of turning
-    over_speed: float = 1.08     # release gas when faster than this x the human here
+    kd: float = 35.0             # damping: steering per radian/frame of turning
+    over_speed: float = 1.2      # release gas when faster than this x the human here
     window: int = 60             # points searched around the last match (keeps it on its lap)
     min_speed: float = 300.0     # below this the pilot's steering label is neutral
     lean_start: float = 0.5      # steering command from which the pilot also leans, like the owner
+    boost: bool = True           # super jet on the bottom straight (x, y below), from lap 2
+    boost_x: tuple = (2600.0, 4200.0)
+    boost_y_max: float = 600.0
 
 
 class Pilot:
@@ -107,7 +110,13 @@ class Pilot:
         # lean into sharp turns, like the owner (who leans on ~28% of frames)
         lean = float(np.sign(u) * np.clip((abs(u) - self.p.lean_start) / max(1.0 - self.p.lean_start, 1e-3), 0, 1))
         gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
-        return np.array([steer, lean, gas, 0.0, 0.0], np.float32)
+        # super jet like the owner: once a lap from lap 2, on the long straight, with energy to spare
+        boost = 0.0
+        if self.p.boost and int(ram[0x0F53]) >= 1 and abs(err) < 0.1 and \
+                self.p.boost_x[0] < x < self.p.boost_x[1] and y < self.p.boost_y_max and \
+                (int(ram[0x00C9]) | int(ram[0x00CA]) << 8) > 1024:
+            boost = 1.0
+        return np.array([steer, lean, gas, 0.0, boost], np.float32)
 
     def buttons(self, ram, x: np.ndarray | None = None) -> dict:
         s, lean, gas, brake, boost = self.intent(ram) if x is None else x
