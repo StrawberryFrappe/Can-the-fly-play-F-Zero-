@@ -125,7 +125,7 @@ easily), but it's work, and the emulator steps once per frame anyway.
 1. **Practice results.** If reward practice after intent lessons helps, run it longer / tune
    `--reward-eta`.
 2. **Instructor corrections (DAgger).** The fly drives, and a teacher labels what it should have
-   done. The look-ahead search instructor in the old scratch scripts managed ~1.5 laps; it would
+   done. The look-ahead search instructor (`tools/search_teacher.py`) managed ~1.5 laps; it would
    need improving (roll-outs with a better base policy) to label reliably.
 3. **Plasticity one layer deeper**: synapses onto the ~4.5 k neurons feeding the motor neurons.
    Still the fly's own wiring, more capacity. The information ceiling there is higher (VPN
