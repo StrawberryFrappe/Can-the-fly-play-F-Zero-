@@ -139,7 +139,7 @@ def dagger(a):
     fos = np.repeat(np.arange(len(etas)), a.batch // len(etas))
     B = len(fos)
     fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=max(float(e) for e in a.eta_deep.split(',')) > 0,
-                  taps=a.taps)
+                  taps=a.taps, steer_span=a.steer_span, lean_span=a.lean_span)
     deep = [float(e) for e in a.eta_deep.split(",")]
     if max(deep) > 0:
         # --eta-deep: relative to each fly's eta; one value, or one per fly
@@ -251,7 +251,8 @@ def dagger(a):
             stats = {"frames": 0, "err": [], "restores": 0, "new": 0, "progress": []}
             ip.swap_slow()
             for f in range(len(etas)):   # the consolidated weights (= the fast ones without it)
-                np.savez_compressed(Path(a.out) / f"fly{f}_f{total}.npz", **ip.state(f), taps=a.taps)
+                np.savez_compressed(Path(a.out) / f"fly{f}_f{total}.npz", **ip.state(f), taps=a.taps,
+                                    steer_span=a.steer_span, lean_span=a.lean_span)
             ip.swap_slow()
             _log(a.out, rec)
             # the exam moved every slot: start fresh drives
@@ -315,6 +316,8 @@ def main(argv=None):
     dg.add_argument("--focus", type=float, default=0.0,
                     help="hard-corner curriculum: extra weight for starts just before frequent crash spots")
     dg.add_argument("--taps", action="store_true", help="tap-rate readout of steering / leaning (motor.MotorParams)")
+    dg.add_argument("--steer-span", type=float, default=150.0, help="taps: Hz beyond threshold for a full hold")
+    dg.add_argument("--lean-span", type=float, default=70.0)
     dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
     dg.add_argument("--exam-frames", type=int, default=12000)
     dg.add_argument("--exam-every", type=int, default=200_000)

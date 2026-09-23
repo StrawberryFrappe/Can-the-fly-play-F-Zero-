@@ -219,8 +219,9 @@ def run_live(hub: Hub, rom: str, state: str, weights: str | None, deep: bool, dr
     from .record import buttons_to_mask
 
     hub.hello["driver"] = driver
-    taps = bool(np.load(weights).get("taps", False)) if weights else False
-    fleet = Fleet(rom, 1, seed=seed, deep=deep, taps=taps)
+    w = np.load(weights) if weights else {}
+    fleet = Fleet(rom, 1, seed=seed, deep=deep, taps=bool(w.get("taps", False)),
+                  steer_span=float(w.get("steer_span", 150.0)), lean_span=float(w.get("lean_span", 70.0)))
     if weights:
         BatchInstruct(fleet.brain, fleet.conn).load(np.load(weights))
     start = Path(state).read_bytes()
