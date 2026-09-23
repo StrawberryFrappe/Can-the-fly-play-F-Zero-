@@ -38,6 +38,15 @@ def save_run(path, start_state: bytes, masks: np.ndarray, rates: np.ndarray, dri
                         rates=rates.astype(np.float16), driver=np.array(driver), meta=np.array(json.dumps(meta)))
 
 
+def _start(game, run):
+    """Put a saved race's start in the emulator exactly as the drive began: like
+    ``EmulatorPool.load``, one frame with nothing pressed comes before the first input."""
+    game.em.set_state(run["start_state"].tobytes())
+    game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
+    game._press({})
+    game.pop_audio()
+
+
 class Hub:
     """Frames produced by a sim thread, broadcast to every connected browser."""
 
@@ -120,8 +129,7 @@ def run_replay(hub: Hub, rom: str, path: str, loop: bool = True):
     hub.hello["audio_rate"] = game.audio_rate()
     game.collect_audio = True
     while True:
-        game.em.set_state(d["start_state"].tobytes())
-        game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
+        _start(game, d)
         pace, finish = Pacer(), None
         for i, (m, r) in enumerate(zip(d["masks"], d["rates"].astype(np.float32))):
             b = mask_to_buttons(m)
@@ -151,8 +159,7 @@ def export(rom: str, path: str, out: str):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     game = FZero(rom, skip_menu=True)
-    game.em.set_state(d["start_state"].tobytes())
-    game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
+    _start(game, d)
     game.collect_audio = True
     frames, finish = [], None
     silent = out / "silent.mp4"
