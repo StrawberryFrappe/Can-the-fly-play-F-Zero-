@@ -83,25 +83,28 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
     L = np.load(lessons_path)
     game = FZero(rom, skip_menu=True)
 
-    # 1. dataset: replay every lesson, keep downsampled frames + the teacher's buttons
-    obs, y = [], []
+    # 1. dataset: replay every lesson, keep downsampled frames + the teacher's buttons. The frames
+    # go to a disk-backed array (about 3 GB for all 10 races): they don't fit in a laptop's RAM
+    racings = [L[f"l{i}_racing"] if f"l{i}_racing" in L else np.ones(len(L[f"l{i}_masks"]), bool)
+               for i in range(int(L["n"]))]
+    n = int(sum(r.sum() for r in racings))
+    X = np.lib.format.open_memmap(Path(out) / "frames.npy", "w+", np.uint8, (n, 56, 64, 6))
+    y, k = [], 0
     for i in range(int(L["n"])):
         game.em.set_state(L[f"l{i}_state"].tobytes())
         frame = game._press({})
         prev = observe(frame)
         masks = L[f"l{i}_masks"]
-        racing = L[f"l{i}_racing"] if f"l{i}_racing" in L else np.ones(len(masks), bool)
-        for m, is_racing in zip(masks, racing):
+        for m, is_racing in zip(masks, racings[i]):
             cur = observe(frame)
             if is_racing:  # menus / results / retry screens are not driving lessons
-                obs.append(np.concatenate([cur, prev], -1))
+                X[k] = np.concatenate([cur, prev], -1)
+                k += 1
                 y.append(labels(m))
             prev = cur
             frame = game._press(mask_to_buttons(m))
-    X = np.stack(obs)                     # N x 56 x 64 x 6 uint8
-    del obs
+    X.flush()
     Y = np.array(y, np.int64)
-    n = len(X)
     print(f"dataset: {n} frames", flush=True)
 
     # 2. train (last 10% held out, in time order)
@@ -148,12 +151,15 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
     frame = game._press({})
     prev = observe(frame)
     prog = Progress()
+    pressed = []
+    from .record import buttons_to_mask
     with torch.no_grad():
         for i in range(exam_frames):
             cur = observe(frame)
             s, le, g, br = (o.argmax(1).item() for o in net(to_tensor(cur, prev).to(dev)))
             prev = cur
             buttons = {"LEFT": s == 1, "RIGHT": s == 2, "L": le == 1, "R": le == 2, "B": g == 1, "Y": br == 1}
+            pressed.append(buttons_to_mask(buttons))
             frame = game.step(buttons)
             prog.update(game.info["segment"], i)
             if game.info["done"]:
@@ -161,4 +167,9 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
     res = {"progress": prog.total, "lap": game.info["lap"], "frames": i + 1, "energy": game.info["energy"]}
     print(json.dumps({"exam": res}), flush=True)
     (Path(out) / "baseline_exam.json").write_text(json.dumps(res))
+    from .live import save_run
+    from .record import buttons_to_mask
+
+    save_run(Path(out) / "baseline_drive.npz", Path(exam_state).read_bytes(), np.array(pressed),
+             np.zeros((len(pressed), 9)), "cnn", **res)
     return res

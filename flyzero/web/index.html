@@ -44,6 +44,7 @@
   .driver.fly { color: var(--ok); }
   .driver.augmented { color: var(--accent); }
   .driver.pilot { color: var(--gold); }
+  .driver.cnn { color: var(--lav); }
   .hud {
     position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px;
     width: min(280px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto;
@@ -391,6 +392,7 @@
     fly: ["fly", "The fly's own synapses learned from the owner's races and from a pilot's corrections. Nothing but its FlyWire brain chooses the buttons."],
     augmented: ["augmented fly", "The FlyWire brain plus an artificial neural implant: electrodes read its neurons, a small trained network stimulates its descending neurons. Not the fly alone."],
     pilot: ["pilot (reference)", "A scripted driver reading position from game memory. Shown for comparison; it is not the fly."],
+    cnn: ["standard AI (CNN)", "A small convolutional network trained on the owner's races: the comparison, not a fly."],
   };
   function setDriver(kind) {
     const d = DRIVERS[kind] || DRIVERS.fly;

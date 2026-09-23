@@ -154,6 +154,17 @@ def dagger(a):
     eta_slot = cp.asarray(np.array(etas)[fos].astype(np.float32))[:, None]
     rng = np.random.default_rng(a.seed)
     starts = fleet.pool.pilot_drive(exam_state, 12000, a.snap_every)
+    # hard-corner curriculum (--focus): start more drives a few segments before where flies crash
+    start_seg = np.array([st[1]["segment"] for st in starts])
+    crashes = np.zeros(59)
+
+    def pick_start():
+        if a.focus <= 0 or crashes.sum() == 0:
+            return rng.integers(len(starts))
+        ahead = (start_seg[:, None] + np.arange(1, 9)[None]) % 59
+        hard = crashes[ahead].sum(1)
+        w = 1.0 + a.focus * hard / max(hard.mean(), 1e-9)
+        return rng.choice(len(starts), p=w / w.sum())
     print(f"{len(starts)} curriculum starts along the pilot's race", flush=True)
 
     flips = np.zeros(B, bool)   # mirror world: flipped view, swapped buttons, mirrored labels
@@ -166,7 +177,7 @@ def dagger(a):
         if rng.random() < a.p_grid:
             r, inf = fleet.pool.load([exam_state], [bool(flips[k])], which=[k])
         else:
-            r, inf = fleet.pool.restore([starts[rng.integers(len(starts))]], [k], [bool(flips[k])])
+            r, inf = fleet.pool.restore([starts[pick_start()]], [k], [bool(flips[k])])
         return r[0], inf[0]
 
     def label(inf, k):
@@ -213,6 +224,9 @@ def dagger(a):
                 snaps[k] = (snaps[k] + [snap])[-4:]
         for k, inf in enumerate(infos):
             crashed = inf["done"] or inf["energy"] < 0.05
+            if crashed:
+                crashes *= 0.995          # remember recent crash spots more
+                crashes[inf["segment"] % 59] += 1
             if crashed and restores[k] < a.max_restores and len(snaps[k]) >= 2:
                 restores[k] += 1
                 stats["restores"] += 1
@@ -297,6 +311,8 @@ def main(argv=None):
                     help="intrinsic plasticity of the instructed DNs (mV per Hz of error per frame)")
     dg.add_argument("--consolidate", type=float, default=0.0,
                     help="time constant (frames) of the slow, consolidated weights used for exams; 0 = off")
+    dg.add_argument("--focus", type=float, default=0.0,
+                    help="hard-corner curriculum: extra weight for starts just before frequent crash spots")
     dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
     dg.add_argument("--exam-frames", type=int, default=12000)
     dg.add_argument("--exam-every", type=int, default=200_000)

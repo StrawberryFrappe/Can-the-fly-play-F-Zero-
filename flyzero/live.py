@@ -266,7 +266,7 @@ def main(argv=None):
     g.add_argument("--pilot", action="store_true", help="the reference pilot drives")
     ap.add_argument("--weights", help="the fly's plastic synapses (.npz); none = untrained FlyWire fly")
     ap.add_argument("--deep", action="store_true", help="weights include the deeper layer")
-    ap.add_argument("--driver", default="fly", choices=["fly", "augmented", "pilot"])
+    ap.add_argument("--driver", default="fly", choices=["fly", "augmented", "pilot", "cnn"])
     ap.add_argument("--line", default="runs/pilot/mute_city_line.npz")
     ap.add_argument("--save", help="folder to save each live race (inputs + DN rates) for replay")
     ap.add_argument("--seed", type=int, default=0)
