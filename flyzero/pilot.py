@@ -58,6 +58,7 @@ class PilotParams:
     kd: float = 20.0             # damping: steering per radian/frame of turning
     over_speed: float = 1.08     # release gas when faster than this x the human here
     window: int = 60             # points searched around the last match (keeps it on its lap)
+    min_speed: float = 300.0     # below this the pilot's steering label is neutral
 
 
 class Pilot:
@@ -99,6 +100,8 @@ class Pilot:
         rate = 0.0 if self.last_h is None else float(np.angle(np.exp(1j * (h - self.last_h))))
         self.last_h = h
         u = self.p.kp * err - self.p.kd * rate
+        if v < self.p.min_speed:   # standing (the READY countdown): steering does nothing, so teach none
+            u = 0.0
         steer = float(np.clip(u, -1, 1))
         lean = float(np.sign(u) * np.clip(abs(u) - 1, 0, 1))
         gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
