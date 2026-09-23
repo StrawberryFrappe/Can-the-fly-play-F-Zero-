@@ -20,11 +20,12 @@ BIAS_TYPES = ("DNa02", "DNg02*", "DNa01", "DNp09")
 
 
 class Fleet:
-    def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=("DNa02", "DNa01", "DNg02*", "DNp09", "MDN"),
+    def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=None,
                  bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
                  deep: bool = False):
         """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
-        ``deep``: also make the synapses onto the DNs' presynaptic partners plastic."""
+        ``deep``: also make the synapses onto the DNs' presynaptic partners plastic.
+        ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber)."""
         from . import connectome as cx
         from .batch import BatchMotor, plastic_positions
         from .biology import corrected
@@ -36,7 +37,9 @@ class Fleet:
 
         self.conn = conn = conn if conn is not None else corrected(cx.load())
         self.B = batch
-        self.pos = plastic_positions(conn, plastic_types)
+        from .batch import PLASTIC_TYPES
+
+        self.pos = plastic_positions(conn, plastic_types or PLASTIC_TYPES)
         if deep:
             from .batch import deep_positions
 

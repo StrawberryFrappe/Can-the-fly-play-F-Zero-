@@ -54,7 +54,7 @@ def _worker(conn, rom, eye, core, line):
             extra = (frame, game.pop_audio()) if want_frame else (None, None)
             conn.send((look(frame), labelled(game.info)) + extra)
         elif cmd == "restore":  # jump to a saved state mid-race, keeping frame/segment bookkeeping
-            _, state, info, frame_no = msg
+            _, state, info, frame_no, flip = msg
             game.em.set_state(state)
             game.info, game.frame_no = dict(info), frame_no
             game._last_move, game._empty = frame_no, 0
@@ -117,8 +117,10 @@ class EmulatorPool:
         out = self._all([("load", s, f) for s, f in zip(states, flips)], which)
         return np.stack([o[0] for o in out]), [o[1] for o in out]
 
-    def restore(self, items, which):
-        """``items``: (state, info, frame_no) per worker in ``which``."""
+    def restore(self, items, which, flips=None):
+        """``items``: (state, info, frame_no) per worker in ``which``; ``flips``: mirrored view."""
+        flips = flips or [False] * len(list(which))
+        items = [tuple(it) + (f,) for it, f in zip(items, flips)]
         out = self._all([("restore", *it) for it in items], list(which))
         return np.stack([o[0] for o in out]), [o[1] for o in out]
 

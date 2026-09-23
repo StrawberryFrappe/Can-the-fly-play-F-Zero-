@@ -168,8 +168,45 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     * **A standard CNN on the same races does no better** (3 segments, below-baseline held-out
       accuracy with 5 races).
 
-    Next: reward **practice** after the lessons, DAgger-style corrections, and plasticity one
-    layer deeper. See `docs/HANDOFF.md`.
+12. **A GPU fleet** (`flyzero/gpu.py`, `fleet.py`). The same LIF model runs many flies at once
+    on a laptop GPU (GTX 1650), spike-for-spike identical to the CPU kernel without noise. Each
+    fly keeps its own copy of the plastic synapses. With one emulator per subprocess, 8 flies
+    drive at ~220 game frames/s in total (the CPU did 25 per core).
+13. **A pilot to learn from** (`flyzero/pilot.py`). The car's position and heading are in RAM
+    (`$0B70`, `$0B90`, `$0BE0`, see the internals doc). A scripted pilot follows the owner's
+    fastest lap and **finishes all 5 laps** (2'46" from our start line; the owner's best is
+    2'25"). **It is not the fly and never drives the fly's car.** It only says what it would do
+    from wherever the fly is. That's the DAgger instructor the owner's races couldn't be: human
+    races only show what to do where a human was.
+14. **Where the steering information is.** The pilot drove and the taught fly watched. Its
+    steering was then decoded from its neurons (ridge regression, cross-validated in time
+    blocks):
+
+    | Neurons (active ones) | r |
+    |---|---|
+    | L1: direct inputs of the motor DNs (643) | 0.59 |
+    | visual projection neurons (481) | 0.65 |
+    | L2: inputs of L1 (15,931) | **0.83** |
+
+    **The brain has the information; the motor synapses can't reach enough of it.**
+15. **DAgger on the motor synapses** (`python -m flyzero.school dagger`). The fly drives and the
+    pilot labels. Curriculum starts are spread along the lap, and after a crash the drive resumes
+    a few seconds earlier (training only; exams always start from the grid). **No gain:** after
+    600 k fly-frames the error against the pilot stayed at 25 Hz and exams got worse.
+    (`runs/results/4_dagger_dn`)
+16. **Plasticity one layer deeper** (`batch.BatchInstructDeep`). The ~1.3 M FlyWire synapses onto
+    the DNs' 4,559 presynaptic partners also learn. Each such neuron gets the error of the DNs it
+    synapses onto, weighted by its own synapses: a retrograde "your targets should fire more /
+    less" signal, which amounts to one step of backpropagation through the fly's own wiring.
+    Dale's law and caps apply as before.
+    * **Result:** the error fell from 25 to 13 Hz in 600 k frames, and crash restarts halved.
+    * One fly drove 24 segments, and with its weights half of the exam drives now reach about
+      30 segments (half a lap).
+    * **Failure modes:**
+      * a one-sided steering bias (the track mostly turns one way), now trained against with
+        the mirror world;
+      * the giant fiber runs away to 300 Hz (so it is instructed too, quiet unless boosting);
+      * wall scraping that drains the energy.
 
 ### Earlier findings
 

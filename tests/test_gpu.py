@@ -85,7 +85,7 @@ def test_deep_update_matches_plain_formula():
     rng = np.random.default_rng(0)
     bi.trace[...] = cp.asarray(rng.uniform(0, 5, bi.trace.shape).astype(np.float32))
     bi.rate[...] = cp.asarray(rng.uniform(0, 60, bi.rate.shape).astype(np.float32))
-    tgt = rng.uniform(0, 80, (4, 8)).astype(np.float32)
+    tgt = rng.uniform(0, 80, (4, len(bi.names))).astype(np.float32)
     learn = np.array([True, False, True, True])
     w0 = cp.asnumpy(gb.pw).copy()
     # expected: plain formula for the deep synapses (DN synapses checked elsewhere)
@@ -100,3 +100,28 @@ def test_deep_update_matches_plain_formula():
     bi._learn(cp.asarray(tgt), learn, bi.p.eta)
     np.testing.assert_allclose(cp.asnumpy(gb.pw)[:, dsel], expected, rtol=1e-4, atol=1e-5)
     assert np.abs(expected - w0[:, dsel]).max() > 1e-4
+
+
+def test_intrinsic_plasticity_moves_bias_towards_target_and_round_trips():
+    from flyzero import connectome as cx
+    from flyzero.batch import BatchInstruct, plastic_positions
+
+    conn = cx.synthetic()
+    gb = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=2, plastic_pos=plastic_positions(conn))
+    gb.set_bias(conn.find("DNp09"), 7.8)
+    bi = BatchInstruct(gb, conn, fly_of_slot=[0, 0], eta_bias=0.01, bias_limit=2.0)
+    j = gb.slots(bi.dn)
+    before = cp.asnumpy(gb.bias_ext[:, j]).copy()
+    bi.rate[...] = 100.0                              # every DN far above its target
+    tgt = np.zeros((2, len(bi.names)), np.float32)
+    for _ in range(50):
+        bi.step(cp.zeros((2, conn.n), cp.int32), tgt, np.array([True, False]), 16.6)
+        bi.rate[...] = 100.0
+    after = cp.asnumpy(gb.bias_ext[:, j])
+    assert (after[0] < before[0]).all() and (after[0] >= before[0] - 2.0 - 1e-5).all()   # down, bounded
+    np.testing.assert_allclose(after[1], after[0])    # same fly: every slot changes together
+    st = bi.state(0)
+    gb2 = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=1, plastic_pos=plastic_positions(conn))
+    gb2.set_bias(conn.find("DNp09"), 7.8)
+    BatchInstruct(gb2, conn).load(st)
+    np.testing.assert_allclose(cp.asnumpy(gb2.bias_ext[0, gb2.slots(bi.dn)]), after[0], atol=1e-5)

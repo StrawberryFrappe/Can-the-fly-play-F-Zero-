@@ -136,6 +136,50 @@ def run_replay(hub: Hub, rom: str, path: str, loop: bool = True):
             return
 
 
+def export(rom: str, path: str, out: str):
+    """A saved race -> ``game.mp4`` (with sound) + ``trace.json`` for the published page."""
+    import subprocess
+    import wave
+
+    import imageio.v2 as imageio
+    import imageio_ffmpeg
+
+    from .games import FZero
+    from .record import mask_to_buttons
+
+    d = np.load(path)
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    game = FZero(rom, skip_menu=True)
+    game.em.set_state(d["start_state"].tobytes())
+    game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
+    game.collect_audio = True
+    frames, finish = [], None
+    silent = out / "silent.mp4"
+    w = imageio.get_writer(silent, fps=FPS, codec="libx264", quality=8, macro_block_size=8,
+                           ffmpeg_params=["-vf", "scale=512:448:flags=neighbor", "-pix_fmt", "yuv420p"])
+    pcm = []
+    for i, (m, r) in enumerate(zip(d["masks"], d["rates"].astype(np.float32))):
+        b = mask_to_buttons(m)
+        w.append_data(game.step(b))
+        pcm.append(game.pop_audio())
+        if finish is None and game.info["lap"] >= 5:
+            finish = i + 1
+        frames.append(_state(i + 1, b, r, game.info, finish))
+    w.close()
+    with wave.open(str(out / "audio.wav"), "wb") as f:
+        f.setnchannels(2); f.setsampwidth(2); f.setframerate(int(round(game.audio_rate())))
+        f.writeframes(np.concatenate(pcm).astype(np.int16).tobytes())
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([ff, "-y", "-loglevel", "error", "-i", str(silent), "-i", str(out / "audio.wav"),
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "96k", "-shortest", str(out / "game.mp4")], check=True)
+    silent.unlink()
+    (out / "audio.wav").unlink()
+    (out / "trace.json").write_text(json.dumps({"fps": FPS, "driver": str(d["driver"]), "frames": frames},
+                                               separators=(",", ":")))
+    print(f"wrote {out}/game.mp4 and trace.json ({len(frames)} frames, finish {finish})")
+
+
 def run_pilot(hub: Hub, rom: str, state: str, line: str):
     from .games import FZero
     from .pilot import Pilot
@@ -219,7 +263,10 @@ def main(argv=None):
     ap.add_argument("--line", default="runs/pilot/mute_city_line.npz")
     ap.add_argument("--save", help="folder to save each live race (inputs + DN rates) for replay")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--export", metavar="DIR", help="with --replay: write game.mp4 + trace.json and exit")
     a = ap.parse_args(argv)
+    if a.export:
+        return export(a.rom, a.replay, a.export)
 
     import websockets
 

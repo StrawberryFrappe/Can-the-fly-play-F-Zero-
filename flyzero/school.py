@@ -33,17 +33,21 @@ def run_exam(fleet, plast, exam_state, frames, flies, drives, save=None):
     from .fleet import summarize
 
     saved = cp.asnumpy(fleet.brain.pw).copy()
+    saved_bias = cp.asnumpy(fleet.brain.bias_ext).copy()   # intrinsic plasticity lives here
     per = {}
     order = [f for f in flies for _ in range(drives)]
     for start in range(0, len(order), fleet.B):
         chunk = order[start:start + fleet.B]
         for s in range(fleet.B):
             f = chunk[s] if s < len(chunk) else chunk[0]
-            fleet.brain.pw[s] = cp.asarray(saved[np.flatnonzero(plast.fly_of_slot == f)[0]])
+            src = np.flatnonzero(plast.fly_of_slot == f)[0]
+            fleet.brain.pw[s] = cp.asarray(saved[src])
+            fleet.brain.bias_ext[s] = cp.asarray(saved_bias[src])
         res = fleet.exam(exam_state, frames, record=save is not None)
         for s, f in enumerate(chunk):
             per.setdefault(f, []).append(res[s])
     fleet.brain.pw[...] = cp.asarray(saved)
+    fleet.brain.bias_ext[...] = cp.asarray(saved_bias)
     if save is not None:
         from .live import save_run
 
@@ -113,7 +117,7 @@ def practice(a):
         if ep % a.exam_every == 0:
             rec["exam"] = run_exam(fleet, rp, exam_state, a.exam_frames, range(len(etas)), a.drives)
             for f in range(len(etas)):
-                np.savez(Path(a.out) / f"fly{f}_drive{ep}.npz", **rp.state(f))
+                np.savez_compressed(Path(a.out) / f"fly{f}_drive{ep}.npz", **rp.state(f))
         _log(a.out, rec)
     fleet.close()
 
@@ -127,20 +131,23 @@ def dagger(a):
     resumes from its own snapshot a few seconds before (the owner OK'd this for training).
     """
     import cupy as cp
-    from .batch import BatchInstruct, BatchInstructDeep
+    from .batch import BatchInstruct, BatchInstructDeep, targets
     from .fleet import Fleet
-    from .instruct import InstructParams, targets_from_intent
+    from .instruct import InstructParams
 
     etas = [float(e) for e in a.etas.split(",")]
     fos = np.repeat(np.arange(len(etas)), a.batch // len(etas))
     B = len(fos)
-    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=a.eta_deep > 0)
-    if a.eta_deep > 0:
+    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=max(float(e) for e in a.eta_deep.split(',')) > 0)
+    deep = [float(e) for e in a.eta_deep.split(",")]
+    if max(deep) > 0:
+        # --eta-deep: relative to each fly's eta; one value, or one per fly
+        deep = np.broadcast_to(np.array(deep), (len(etas),))
         ip = BatchInstructDeep(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos,
-                               eta_deep=a.eta_deep * etas[0])   # --eta-deep is relative to eta
+                               eta_deep=etas[0], deep_scale=deep[fos], eta_bias=a.eta_bias)
         print(f"deep plasticity: {ip.n_deep} synapses onto {len(ip.l1)} L1 neurons", flush=True)
     else:
-        ip = BatchInstruct(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos)
+        ip = BatchInstruct(fleet.brain, fleet.conn, InstructParams(eta=etas[0]), fly_of_slot=fos, eta_bias=a.eta_bias)
     if a.init:
         ip.load(np.load(a.init))
     exam_state = Path(a.exam).read_bytes()
@@ -148,16 +155,25 @@ def dagger(a):
     rng = np.random.default_rng(a.seed)
     starts = fleet.pool.pilot_drive(exam_state, 12000, a.snap_every)
     print(f"{len(starts)} curriculum starts along the pilot's race", flush=True)
-    names = ip.names
+
+    flips = np.zeros(B, bool)   # mirror world: flipped view, swapped buttons, mirrored labels
+    SWAP = {"LEFT": "RIGHT", "RIGHT": "LEFT", "L": "R", "R": "L"}
 
     def new_start(k):
         fleet.reset_slots(k)
         ip.reset(k)
+        flips[k] = rng.random() < a.mirror
         if rng.random() < a.p_grid:
-            r, inf = fleet.pool.load([exam_state], which=[k])
+            r, inf = fleet.pool.load([exam_state], [bool(flips[k])], which=[k])
         else:
-            r, inf = fleet.pool.restore([starts[rng.integers(len(starts))]], [k])
+            r, inf = fleet.pool.restore([starts[rng.integers(len(starts))]], [k], [bool(flips[k])])
         return r[0], inf[0]
+
+    def label(inf, k):
+        x = np.asarray(inf["pilot"], np.float32).copy()
+        if flips[k]:
+            x[:2] = -x[:2]
+        return targets(x, ip.p)
 
     def exam_now(tag):
         return run_exam(fleet, ip, exam_state, a.exam_frames, range(len(etas)), a.drives,
@@ -177,8 +193,8 @@ def dagger(a):
     while total < a.frames:
         counts = fleet.think(rates)
         buttons = fleet.motor.update(counts, fleet.window)
-        tgt = np.array([[targets_from_intent(np.asarray(inf["pilot"]), ip.p)[n] for n in names] for inf in infos],
-                       np.float32)
+        buttons = [{SWAP.get(b, b): v for b, v in bt.items()} if flips[k] else bt for k, bt in enumerate(buttons)]
+        tgt = np.array([label(inf, k) for k, inf in enumerate(infos)], np.float32)
         learn = np.array([inf.get("racing", False) for inf in infos])
         err = ip.step(counts, tgt, learn, fleet.window, eta=eta_slot)
         stats["err"].append(float(err[learn].mean()) if learn.any() else 0.0)
@@ -198,7 +214,7 @@ def dagger(a):
                 ip.reset(k)
                 snap = snaps[k][-2]         # a few seconds before the crash
                 snaps[k] = snaps[k][:-2]
-                r, i2 = fleet.pool.restore([snap], [k])
+                r, i2 = fleet.pool.restore([snap], [k], [bool(flips[k])])
                 rates[k], infos[k] = r[0], i2[0]
                 age[k] = 0                  # a restored drive gets a fresh episode budget
             elif crashed or age[k] >= a.episode_frames:
@@ -213,7 +229,7 @@ def dagger(a):
                    "exam": exam_now(total)}
             stats = {"frames": 0, "err": [], "restores": 0, "new": 0, "progress": []}
             for f in range(len(etas)):
-                np.savez(Path(a.out) / f"fly{f}_f{total}.npz", **ip.state(f))
+                np.savez_compressed(Path(a.out) / f"fly{f}_f{total}.npz", **ip.state(f))
             _log(a.out, rec)
             # the exam moved every slot: start fresh drives
             for k in range(B):
@@ -269,10 +285,13 @@ def main(argv=None):
     dg.add_argument("--snap-every", type=int, default=120)
     dg.add_argument("--max-restores", type=int, default=3)
     dg.add_argument("--p-grid", type=float, default=0.25)
+    dg.add_argument("--eta-bias", type=float, default=0.0,
+                    help="intrinsic plasticity of the instructed DNs (mV per Hz of error per frame)")
+    dg.add_argument("--mirror", type=float, default=0.5, help="share of training drives in the mirror world")
     dg.add_argument("--exam-frames", type=int, default=12000)
     dg.add_argument("--exam-every", type=int, default=200_000)
     dg.add_argument("--drives", type=int, default=2, help="exam drives per fly")
-    dg.add_argument("--eta-deep", type=float, default=0.0,
+    dg.add_argument("--eta-deep", default="0",
                     help="deep plasticity (synapses onto the DNs' inputs), learning rate relative to eta")
     dg.add_argument("--seed", type=int, default=0)
     dg.add_argument("--out", required=True)
