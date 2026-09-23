@@ -70,3 +70,33 @@ def test_poisson_input_rate():
     # each kick (68.75 mV) fires the neuron unless it's refractory: ~100 Hz minus refractory losses
     assert 70 < c.mean() < 105
     assert not np.array_equal(c[0], c[1])   # flies get different noise
+
+
+def test_deep_update_matches_plain_formula():
+    from flyzero import connectome as cx
+    from flyzero.batch import BatchInstructDeep, deep_positions, plastic_positions
+
+    conn = cx.synthetic()
+    p1 = plastic_positions(conn)
+    pos = np.union1d(p1, deep_positions(conn, p1))
+    gb = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=4, plastic_pos=pos)
+    bi = BatchInstructDeep(gb, conn, fly_of_slot=[0, 0, 1, 1], eta_deep=1e-3)
+    assert bi.n_deep > 0
+    rng = np.random.default_rng(0)
+    bi.trace[...] = cp.asarray(rng.uniform(0, 5, bi.trace.shape).astype(np.float32))
+    bi.rate[...] = cp.asarray(rng.uniform(0, 60, bi.rate.shape).astype(np.float32))
+    tgt = rng.uniform(0, 80, (4, 8)).astype(np.float32)
+    learn = np.array([True, False, True, True])
+    w0 = cp.asnumpy(gb.pw).copy()
+    # expected: plain formula for the deep synapses (DN synapses checked elsewhere)
+    sel, dsel = cp.asnumpy(bi.dn_sel), cp.asnumpy(bi.deep_sel)
+    err = tgt[:, cp.asnumpy(bi.post_group)[sel]] - cp.asnumpy(bi.rate)[:, cp.asnumpy(bi.post_k)[sel]]
+    delta = np.zeros((4, len(bi.l1)), np.float32)
+    np.add.at(delta.T, cp.asnumpy(bi.dn_pre_l1), (w0[:, sel] / gb.p.w_syn * err).T)
+    change = bi.eta_deep * cp.asnumpy(bi.trace)[:, cp.asnumpy(bi.deep_pre_k)] * delta[:, cp.asnumpy(bi.deep_post_l1)]
+    per_fly = np.stack([change[0], change[2:].mean(0)])
+    sign, wmax = cp.asnumpy(bi.sign)[dsel], cp.asnumpy(bi.wmax)[dsel]
+    expected = sign * np.clip(sign * (w0[:, dsel] + per_fly[[0, 0, 1, 1]]), 0, wmax)
+    bi._learn(cp.asarray(tgt), learn, bi.p.eta)
+    np.testing.assert_allclose(cp.asnumpy(gb.pw)[:, dsel], expected, rtol=1e-4, atol=1e-5)
+    assert np.abs(expected - w0[:, dsel]).max() > 1e-4

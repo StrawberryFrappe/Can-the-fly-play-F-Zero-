@@ -19,6 +19,33 @@ from .instruct import GROUPS, InstructParams
 from .learning import LearnParams
 from .motor import BUTTONS, MotorParams
 
+_DEEP_SRC = r"""
+extern "C" __global__ void deep_update(
+    const int n_syn, const int B, const int* sel, const int* pre_k, const int* post_l1,
+    const float* trace, const int n_tr, const float* delta, const int n_l1,
+    float* pw, const int n_pl, const float* sign, const float* wmax,
+    const float* coef, const int* fos, const int n_flies)
+{
+    // one thread per deep synapse: average the change over each fly's slots, apply to all of them
+    int s = blockIdx.x * blockDim.x + threadIdx.x;
+    if (s >= n_syn) return;
+    int j = sel[s], pk = pre_k[s], pl = post_l1[s];
+    float acc[16];
+    for (int f = 0; f < n_flies; f++) acc[f] = 0.0f;
+    for (int b = 0; b < B; b++)
+        if (coef[b] != 0.0f)
+            acc[fos[b]] += coef[b] * trace[(long long)b * n_tr + pk] * delta[(long long)b * n_l1 + pl];
+    float sg = sign[j], mx = wmax[j];
+    for (int b = 0; b < B; b++) {
+        float d = acc[fos[b]];
+        if (d == 0.0f) continue;
+        long long q = (long long)b * n_pl + j;
+        float w = sg * (pw[q] + d);
+        pw[q] = sg * fminf(fmaxf(w, 0.0f), mx);
+    }
+}
+"""
+
 READOUT = ["steer_left", "steer_right", "lean_left", "lean_right", "wing_left", "wing_right",
            "accelerate", "brake", "boost"]
 
@@ -98,15 +125,21 @@ class _Plastic:
         # (flies, slots) averaging matrix: mean change over the slots that are learning
         self._fos = cp.asarray(fos)
 
-    def apply(self, dw: cp.ndarray, active: np.ndarray):
-        """Average ``dw`` (slots, n_pl) over each fly's active slots; update every slot of the fly."""
+    def apply(self, dw: cp.ndarray, active: np.ndarray, sel=None):
+        """Average ``dw`` (slots, n_pl) over each fly's active slots; update every slot of the fly.
+        With ``sel`` (plastic indices), ``dw`` is (slots, len(sel)) and only those change."""
         act = cp.asarray(active.astype(np.float32))
         onehot = cp.zeros((self.n_flies, self.B), cp.float32)
         onehot[self._fos, cp.arange(self.B)] = act
         n = onehot.sum(1, keepdims=True)
-        per_fly = (onehot @ dw) / cp.maximum(n, 1.0)
-        w = self.brain.pw + per_fly[self._fos]
-        self.brain.pw[...] = self.sign * cp.clip(self.sign * w, 0.0, self.wmax)
+        per_fly = (onehot / cp.maximum(n, 1.0)) @ dw
+        if sel is None:
+            w = self.brain.pw + per_fly[self._fos]
+            self.brain.pw[...] = self.sign * cp.clip(self.sign * w, 0.0, self.wmax)
+        else:
+            sign = self.sign[sel]
+            w = self.brain.pw[:, sel] + per_fly[self._fos]
+            self.brain.pw[:, sel] = sign * cp.clip(sign * w, 0.0, self.wmax[sel])
 
     def state(self, fly: int) -> dict:
         slot = int(np.flatnonzero(self.fly_of_slot == fly)[0])
@@ -158,8 +191,10 @@ class BatchInstruct(_Plastic):
         self.trace[s] = 0
         self.rate[s] = 0
 
-    def step(self, counts: cp.ndarray, targets: np.ndarray | None, learn: np.ndarray, window_ms: float):
-        """``targets``: (slots, 8) target rates in ``GROUPS`` order; ``learn``: bool per slot.
+    def step(self, counts: cp.ndarray, targets: np.ndarray | None, learn: np.ndarray, window_ms: float,
+             eta=None):
+        """``targets``: (slots, 8) target rates in ``GROUPS`` order; ``learn``: bool per slot;
+        ``eta``: learning rate, scalar or per slot ((slots, 1) on the GPU); default ``p.eta``.
         Returns the mean |target - rate| (Hz) per slot (0 where not learning)."""
         p = self.p
         a_pre = 1 - np.exp(-window_ms / p.tau_pre_ms)
@@ -172,15 +207,89 @@ class BatchInstruct(_Plastic):
         if targets is None or not learn.any():
             return np.zeros(self.B)
         tgt = cp.asarray(targets, cp.float32)
-        err = tgt[:, self.post_group] - self.rate[:, self.post_k]
-        dw = p.eta * self.trace[:, self.pre_k] * err * self.mask
-        self.apply(dw, learn)
+        self._learn(tgt, learn, p.eta if eta is None else eta)
         rate = cp.asnumpy(self.rate)
         out = np.zeros(self.B)
         for k, mem in enumerate(self.group_members):
             if len(mem):
                 out += np.abs(targets[:, k] - rate[:, mem].mean(1))
         return np.where(learn, out / len(self.names), 0.0)
+
+
+    def _learn(self, tgt, learn, eta):
+        err = tgt[:, self.post_group] - self.rate[:, self.post_k]
+        self.apply(eta * self.trace[:, self.pre_k] * err * self.mask, learn)
+
+
+def deep_positions(conn: Connectome, dn_pos: np.ndarray) -> np.ndarray:
+    """CSR positions of every synapse onto the motor DNs' presynaptic partners ("L1")."""
+    w = sp.csr_matrix(conn.weights, dtype=np.float32)
+    w.sort_indices()
+    rows = np.repeat(np.arange(w.shape[0]), np.diff(w.indptr))
+    is_l1 = np.zeros(conn.n, bool)
+    is_l1[np.unique(rows[dn_pos])] = True
+    return np.flatnonzero(is_l1[w.indices])
+
+
+class BatchInstructDeep(BatchInstruct):
+    """Instructed learning one layer deeper: synapses onto the DNs' presynaptic partners (L1).
+
+    The DN synapses learn exactly as in ``BatchInstruct``. Each L1 neuron i also gets an error
+    signal from the motor DNs it synapses onto: ``delta_i = sum_j n_ij * err_j``, where n_ij is
+    its current signed synapse count onto DN j (weights in units of one synapse) and err_j that
+    DN's target - rate (Hz). A retrograde "your targets should fire more / less" signal, i.e.
+    the delta rule passed back through the fly's own synapses (one step of backpropagation).
+    Synapses onto L1 then learn ``dw_ki = eta_deep * trace_k * delta_i`` (Dale's law and caps as
+    everywhere). Needs a brain whose plastic positions include ``deep_positions``.
+    """
+
+    def __init__(self, brain, conn: Connectome, params: InstructParams | None = None, fly_of_slot=None,
+                 eta_deep: float = 1e-6):
+        super().__init__(brain, conn, params, fly_of_slot)
+        self.eta_deep = eta_deep
+        dn_syn = cp.asnumpy(self.mask)
+        post = brain.pl_post
+        is_dn = np.zeros(conn.n, bool)
+        for g in self.names:
+            is_dn[conn.find(*GROUPS[g])] = True
+        self.l1 = np.unique(brain.pl_pre[dn_syn])
+        l1_index = np.full(conn.n, -1, np.int64)
+        l1_index[self.l1] = np.arange(len(self.l1))
+        self.dn_sel = cp.asarray(np.flatnonzero(dn_syn))                 # L1 -> DN synapses
+        self.dn_pre_l1 = cp.asarray(l1_index[brain.pl_pre[dn_syn]])
+        deep = (l1_index[post] >= 0) & ~is_dn[post]
+        self.deep_sel = cp.asarray(np.flatnonzero(deep))                  # -> L1 synapses
+        self.deep_post_l1 = cp.asarray(l1_index[post[deep]])
+        self.deep_pre_k = self.pre_k[self.deep_sel]
+        self.n_deep = int(deep.sum())
+        assert self.n_flies <= 16
+        self.k_sel = self.deep_sel.astype(cp.int32)
+        self.k_pre = self.deep_pre_k.astype(cp.int32)
+        self.k_post = self.deep_post_l1.astype(cp.int32)
+        self.k_fos = self._fos.astype(cp.int32)
+        self.sign = self.sign.astype(cp.float32)
+        self.wmax = self.wmax.astype(cp.float32)
+        self._kernel = cp.RawModule(code=_DEEP_SRC).get_function("deep_update")
+
+    def _learn(self, tgt, learn, eta):
+        import cupyx
+
+        sel = self.dn_sel
+        err = tgt[:, self.post_group[sel]] - self.rate[:, self.post_k[sel]]      # (slots, DN synapses)
+        # retrograde error for each L1 neuron, through its current synapses onto the DNs
+        w = self.brain.pw[:, sel] / self.brain.p.w_syn
+        self.apply(eta * self.trace[:, self.pre_k[sel]] * err, learn, sel)
+        delta = cp.zeros((self.B, len(self.l1)), cp.float32)
+        cupyx.scatter_add(delta, (slice(None), self.dn_pre_l1), w * err)
+        # fused kernel: coef = per-slot rate / number of learning slots of its fly
+        eta_b = np.broadcast_to(cp.asnumpy(cp.asarray(eta, cp.float32)).ravel(), (self.B,)) * (self.eta_deep / self.p.eta)
+        n_act = np.bincount(self.fly_of_slot, weights=learn, minlength=self.n_flies)
+        coef = np.where(learn, eta_b / np.maximum(n_act[self.fly_of_slot], 1), 0.0).astype(np.float32)
+        n = np.int32(self.n_deep)
+        self._kernel(((self.n_deep + 255) // 256,), (256,), (
+            n, np.int32(self.B), self.k_sel, self.k_pre, self.k_post, self.trace, np.int32(self.trace.shape[1]),
+            delta, np.int32(len(self.l1)), self.brain.pw, np.int32(self.brain.pw.shape[1]),
+            self.sign, self.wmax, cp.asarray(coef), self.k_fos, np.int32(self.n_flies)))
 
 
 class BatchReward(_Plastic):

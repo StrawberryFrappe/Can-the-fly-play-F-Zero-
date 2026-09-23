@@ -1,0 +1,562 @@
+<title>Fly at the Controls</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* one deliberate look: Mute City at night. Single dark theme, painted explicitly. */
+  :root {
+    color-scheme: dark;
+    --ground: #0d0a1c;
+    --ink: #ece9f7;
+    --dim: #9a94b8;
+    --accent: #f0409e;
+    --lav: #9c8fd6;
+    --gold: #fad232;
+    --ok: #5fd39a;
+    --warn: #ff7a59;
+    --panel: rgba(20, 16, 40, 0.74);
+    --line: rgba(156, 143, 214, 0.25);
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 14px/1.45 "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; }
+  .caption {
+    position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    max-width: min(560px, calc(100% - 32px)); display: grid; gap: 6px; pointer-events: none;
+  }
+  .caption h1 {
+    margin: 0; font: 700 clamp(22px, 4.2vw, 40px)/1.02 "Chakra Petch", system-ui, sans-serif;
+    letter-spacing: 0.01em; text-wrap: balance;
+  }
+  .caption h1 em { font-style: normal; color: var(--accent); }
+  .caption p { margin: 0; color: var(--dim); font-size: 12.5px; max-width: 62ch; }
+  .driver {
+    justify-self: start; font: 700 12px "Chakra Petch", sans-serif; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 4px; border: 1px solid currentColor;
+    color: var(--lav);
+  }
+  .driver.fly { color: var(--ok); }
+  .driver.augmented { color: var(--accent); }
+  .driver.pilot { color: var(--gold); }
+  .hud {
+    position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px;
+    width: min(280px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; display: grid; gap: 8px; backdrop-filter: blur(6px);
+    font-variant-numeric: tabular-nums; font-size: 12px;
+  }
+  .hud .row { display: grid; grid-template-columns: 92px 1fr 40px; align-items: center; gap: 8px; }
+  .hud .lbl { color: var(--dim); letter-spacing: 0.04em; }
+  .hud .bar { height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .hud .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
+  .hud .bar.power i { background: var(--lav); }
+  .hud .val { text-align: right; }
+  .hud .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .hud .head b { font: 700 13px "Chakra Petch", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+  .race { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .race div { display: grid; gap: 1px; }
+  .race span { color: var(--dim); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .race strong { font: 700 17px "Chakra Petch", sans-serif; }
+  .keys { display: flex; flex-wrap: wrap; gap: 5px; }
+  .keys span { min-width: 22px; padding: 2px 6px; border-radius: 5px; text-align: center; border: 1px solid var(--line); color: var(--dim); }
+  .keys span.on { background: var(--gold); color: #1a1400; border-color: var(--gold); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .status { color: var(--dim); font-size: 11px; }
+  .status.live { color: var(--ok); }
+  button {
+    font: 500 12px "IBM Plex Mono", monospace; color: var(--ink); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--lav); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .finish {
+    position: fixed; left: 50%; top: 22%; transform: translate(-50%, -50%);
+    font: 700 clamp(28px, 7vw, 72px)/1 "Chakra Petch", sans-serif; color: var(--gold);
+    letter-spacing: 0.08em; text-shadow: 0 0 24px rgba(250, 210, 50, 0.45); pointer-events: none; text-align: center;
+  }
+  .finish small { display: block; font-size: 0.32em; color: var(--ink); letter-spacing: 0.12em; margin-top: 8px; }
+  @media (max-width: 600px) {
+    .hud { width: auto; left: 16px; max-height: 46%; }
+    .hud .row { grid-template-columns: 78px 1fr 34px; }
+    .caption p { display: none; }
+  }
+</style>
+
+<div id="stage" aria-label="3D scene: a fruit fly standing on a SNES controller, pressing the buttons its simulated brain chooses"></div>
+
+<aside class="hud" aria-live="off">
+  <div class="head"><b>Mute City I</b><span class="status" id="status">connecting…</span></div>
+  <div class="race">
+    <div><span>Lap</span><strong id="lap">0/5</strong></div>
+    <div><span>Time</span><strong id="clock">0'00"00</strong></div>
+    <div><span>km/h</span><strong id="kmh">0</strong></div>
+  </div>
+  <div class="row"><span class="lbl">POWER</span><span class="bar power"><i id="b-power"></i></span><span class="val" id="v-power">100</span></div>
+  <div class="head"><b>Descending neurons</b><span class="status">Hz</span></div>
+  <div id="dns"></div>
+  <div class="keys" id="keys"></div>
+  <div class="controls">
+    <button id="play" type="button">Pause</button>
+    <button id="spin" type="button">Stop orbit</button>
+    <button id="sound" type="button">Sound on</button>
+  </div>
+  <div class="status" id="speed"></div>
+</aside>
+
+<div class="caption">
+  <span class="driver" id="driver">fly</span>
+  <h1>A simulated fly brain <em>playing F-Zero</em></h1>
+  <p id="blurb">138,639 model neurons wired from the FlyWire connectome. Motion on screen reaches its
+     T4/T5 cells; its descending neurons press the buttons. Hz = firing rate. Drag to orbit.</p>
+</div>
+<div class="finish" id="finish" hidden>FINISHED<small id="finish-time"></small></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  THREE.ColorManagement.legacyMode = false;
+
+  // ---------- renderer / scene ----------
+  const stage = document.getElementById("stage");
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0a1c);
+  scene.fog = new THREE.Fog(0x0d0a1c, 26, 60);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+  camera.position.set(11, 10.5, 17.5);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 1.6, -2.4);
+  controls.enableDamping = true;
+  controls.minDistance = 6; controls.maxDistance = 34;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.autoRotate = !reduceMotion;
+  controls.autoRotateSpeed = 0.55;
+
+  scene.add(new THREE.HemisphereLight(0xc9c4ff, 0x1a1030, 0.55));
+  const key = new THREE.DirectionalLight(0xfff4e6, 1.25);
+  key.position.set(6, 14, 8); key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
+  key.shadow.radius = 4;
+  scene.add(key);
+  const rimPink = new THREE.PointLight(0xf0409e, 0.7, 30); rimPink.position.set(-12, 6, -9); scene.add(rimPink);
+  const rimCyan = new THREE.PointLight(0x40c8f0, 0.9, 40); rimCyan.position.set(10, 4, -8); scene.add(rimCyan);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 64), new THREE.MeshStandardMaterial({ color: 0x17122e, roughness: 0.92 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  const std = (color, rough = 0.5, metal = 0, extra = {}) =>
+    new THREE.MeshStandardMaterial(Object.assign({ color, roughness: rough, metalness: metal }, extra));
+
+  // ---------- SNES controller (US colours) ----------
+  const pad = new THREE.Group(); scene.add(pad);
+  const shape = new THREE.Shape();
+  (function outline() {
+    const R = 2.75, cx = 3.35, waist = 1.95;
+    shape.moveTo(-cx, -R); shape.lineTo(cx, -R);
+    shape.absarc(cx, 0, R, -Math.PI / 2, Math.PI / 2, false);
+    shape.quadraticCurveTo(0, waist, -cx, R);
+    shape.absarc(-cx, 0, R, Math.PI / 2, Math.PI * 1.5, false);
+  })();
+  const bodyGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.9, bevelEnabled: true, bevelThickness: 0.28, bevelSize: 0.28, bevelSegments: 6, curveSegments: 64 });
+  bodyGeo.rotateX(-Math.PI / 2); bodyGeo.translate(0, 0.28, 0);
+  const shell = new THREE.Mesh(bodyGeo, std(0xc9c7d1, 0.62));
+  shell.castShadow = shell.receiveShadow = true; pad.add(shell);
+  const TOP = 1.46;
+  const plate = new THREE.Mesh(new THREE.CapsuleGeometry(1.25, 2.3, 8, 24), std(0x8e8a99, 0.55));
+  plate.rotation.set(Math.PI / 2, 0, Math.PI / 2 + 0.52);
+  plate.scale.set(1, 1, 0.12); plate.position.set(3.4, TOP - 0.02, 0.05); pad.add(plate);
+  const well = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.55, 0.06, 48), std(0xb3b1bb, 0.7));
+  well.position.set(-3.35, TOP - 0.01, 0.05); pad.add(well);
+  const dpad = new THREE.Group(); dpad.position.set(-3.35, TOP + 0.12, 0.05); pad.add(dpad);
+  const dmat = std(0x2a2930, 0.45);
+  const armH = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.28, 0.78), dmat);
+  const armV = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.28, 2.3), dmat);
+  armH.castShadow = armV.castShadow = true; dpad.add(armH, armV);
+  const dimple = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.04, 24), std(0x1d1c22, 0.6));
+  dimple.position.y = 0.15; dpad.add(dimple);
+  const face = {};
+  const faceDefs = { X: [0, -1, 0x9c8fd6], Y: [-1, 0, 0x52438f], A: [1, 0, 0x9c8fd6], B: [0, 1, 0x52438f] };
+  const faceCentre = new THREE.Vector3(3.4, TOP, 0.05);
+  const glowMat = (c) => std(c, 0.35, 0, { emissive: 0xf0409e, emissiveIntensity: 0 });
+  for (const [k, [dx, dz, col]] of Object.entries(faceDefs)) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.52, 0.34, 40), glowMat(col));
+    const ang = -0.52;
+    const x = dx * Math.cos(ang) - dz * Math.sin(ang), z = dx * Math.sin(ang) + dz * Math.cos(ang);
+    m.position.set(faceCentre.x + x * 1.12, TOP + 0.14, faceCentre.z + z * 1.12);
+    m.castShadow = true; m.userData.rest = m.position.y;
+    pad.add(m); face[k] = m;
+  }
+  for (const [, x] of [["SELECT", -0.55], ["START", 0.55]]) {
+    const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.55, 6, 16), std(0x55535c, 0.6));
+    m.rotation.set(Math.PI / 2, 0, Math.PI / 2 + 0.75); m.position.set(x, TOP + 0.05, 0.55); pad.add(m);
+  }
+  const shoulders = {};
+  for (const [k, x] of [["L", -3.6], ["R", 3.6]]) {
+    const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 2.4, 6, 20), glowMat(0xa9a7b1));
+    m.rotation.set(0, 0, Math.PI / 2); m.position.set(x, 1.05, -2.62); m.scale.set(1, 1, 0.8);
+    m.rotation.y = x < 0 ? 0.28 : -0.28; m.userData.rest = m.position.y;
+    pad.add(m); shoulders[k] = m;
+  }
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.9, -2.3), new THREE.Vector3(0, 0.6, -4.5), new THREE.Vector3(-1.5, 0.12, -7),
+    new THREE.Vector3(-0.5, 0.12, -10), new THREE.Vector3(2.5, 0.12, -12)]), 64, 0.13, 10), std(0x2b2a31, 0.5));
+  cable.castShadow = true; pad.add(cable);
+
+  // ---------- CRT: live frames (canvas) or the recorded race (video) ----------
+  const tv = new THREE.Group(); tv.position.set(0, 0, -11); tv.rotation.y = -0.15; scene.add(tv);
+  const tvBox = new THREE.Mesh(new THREE.BoxGeometry(8.4, 6.6, 5), std(0x24212e, 0.55));
+  tvBox.position.y = 3.3; tvBox.castShadow = true; tv.add(tvBox);
+  const crt = document.createElement("canvas"); crt.width = 256; crt.height = 224;
+  const crtCtx = crt.getContext("2d");
+  crtCtx.fillStyle = "#000"; crtCtx.fillRect(0, 0, 256, 224);
+  const ctex = new THREE.CanvasTexture(crt);
+  ctex.encoding = THREE.sRGBEncoding; ctex.magFilter = THREE.NearestFilter; ctex.minFilter = THREE.LinearFilter;
+  const screenMat = new THREE.MeshBasicMaterial({ map: ctex, toneMapped: false });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 5.2), screenMat);
+  screen.position.set(0, 3.4, 2.52); tv.add(screen);
+  const screenGlow = new THREE.PointLight(0x7fb0ff, 0.9, 18); screenGlow.position.set(0, 3.4, 5); tv.add(screenGlow);
+
+  // ---------- the fly ----------
+  const fly = new THREE.Group(); scene.add(fly);
+  const cuticle = std(0xb07e45, 0.42, 0.05);
+  const darkCut = std(0x3d2a17, 0.5);
+  function eyeTexture() {
+    const c = document.createElement("canvas"); c.width = 512; c.height = 256;
+    const g = c.getContext("2d");
+    g.fillStyle = "#5e0b0b"; g.fillRect(0, 0, 512, 256);
+    const r = 5.2, h = r * Math.sqrt(3);
+    for (let y = 0, row = 0; y < 270; y += h / 2, row++) {
+      for (let x = (row % 2) * r * 1.5; x < 530; x += r * 3) {
+        const shade = 150 + Math.random() * 60;
+        g.fillStyle = `rgb(${shade},${20 + Math.random() * 18},18)`;
+        g.beginPath();
+        for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; g.lineTo(x + r * 0.86 * Math.cos(a), y + r * 0.86 * Math.sin(a)); }
+        g.fill();
+      }
+    }
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  }
+  function bandTexture() {
+    const c = document.createElement("canvas"); c.width = 64; c.height = 256;
+    const g = c.getContext("2d");
+    g.fillStyle = "#b8864b"; g.fillRect(0, 0, 64, 256);
+    for (let i = 0; i < 5; i++) { g.fillStyle = "#2c1d10"; g.fillRect(0, 60 + i * 34, 64, 16); }
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  }
+  const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.62, 40, 28), cuticle);
+  thorax.scale.set(0.95, 0.85, 1.15); thorax.castShadow = true; fly.add(thorax);
+  for (const x of [-0.18, 0.18]) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.625, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2.2), std(0x8c6034, 0.5));
+    s.scale.set(0.12, 0.86, 1.1); s.position.x = x; fly.add(s);
+  }
+  const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.55, 40, 28), std(0xffffff, 0.45, 0, { map: bandTexture() }));
+  abdomen.scale.set(0.82, 1.7, 0.78); abdomen.rotation.x = Math.PI / 2 + 0.1;
+  abdomen.position.set(0, -0.1, 1.35); abdomen.castShadow = true; fly.add(abdomen);
+  const head = new THREE.Group(); head.position.set(0, 0.12, -0.78); fly.add(head);
+  const headBall = new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 24), cuticle);
+  headBall.scale.set(1.2, 0.95, 0.8); headBall.castShadow = true; head.add(headBall);
+  const eyeMat = std(0xffffff, 0.28, 0.1, { map: eyeTexture() });
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.34, 40, 28), eyeMat);
+    eye.scale.set(0.8, 1.1, 1); eye.position.set(s * 0.36, 0.03, -0.06); eye.castShadow = true; head.add(eye);
+    const ant = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.12, 4, 8), darkCut);
+    ant.position.set(s * 0.09, 0.02, -0.34); ant.rotation.x = 0.6; head.add(ant);
+    const ar = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.01, 0.42, 5), darkCut);
+    ar.position.set(s * 0.2, 0.08, -0.46); ar.rotation.set(0.9, 0, -s * 1.0); head.add(ar);
+  }
+  for (let i = 0; i < 12; i++) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.012, 0.32, 4), darkCut);
+    const a = (i / 12) * Math.PI - Math.PI / 2, side = i % 2 ? 1 : -1;
+    b.position.set(side * (0.22 + 0.08 * Math.sin(a)), 0.5, -0.3 + (i / 12) * 0.8);
+    b.rotation.set(-0.9, 0, side * 0.35); fly.add(b);
+  }
+  function wingTexture() {
+    const c = document.createElement("canvas"); c.width = 256; c.height = 128;
+    const g = c.getContext("2d");
+    g.strokeStyle = "rgba(60,40,20,0.8)"; g.lineWidth = 2;
+    for (const [y0, y1] of [[64, 30], [64, 52], [64, 72], [64, 96]]) { g.beginPath(); g.moveTo(0, y0); g.quadraticCurveTo(128, (y0 + y1) / 2, 250, y1); g.stroke(); }
+    g.lineWidth = 1.4; g.beginPath(); g.moveTo(120, 50); g.lineTo(122, 76); g.moveTo(170, 60); g.lineTo(168, 88); g.stroke();
+    return new THREE.CanvasTexture(c);
+  }
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0); wingShape.bezierCurveTo(0.6, 0.42, 2.0, 0.48, 2.35, 0.08);
+  wingShape.bezierCurveTo(2.45, -0.2, 1.4, -0.52, 0, -0.08);
+  const wingGeo = new THREE.ShapeGeometry(wingShape, 24);
+  wingGeo.computeBoundingBox();
+  (function uv() {
+    const bb = wingGeo.boundingBox, pos = wingGeo.attributes.position, uvs = [];
+    for (let i = 0; i < pos.count; i++) uvs.push((pos.getX(i) - bb.min.x) / (bb.max.x - bb.min.x), (pos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y));
+    wingGeo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  })();
+  const wingMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.55,
+    roughness: 0.15, metalness: 0, side: THREE.DoubleSide, map: wingTexture(), iridescence: 1.0,
+    iridescenceIOR: 1.3, depthWrite: false });
+  const wings = [];
+  const splay = 0.28;
+  for (const s of [-1, 1]) {
+    const hinge = new THREE.Group(); hinge.position.set(s * 0.22, 0.55, -0.05); hinge.rotation.x = -0.12; fly.add(hinge);
+    const holder = new THREE.Group();
+    holder.rotation.y = s > 0 ? splay - Math.PI / 2 : -Math.PI / 2 - splay;
+    const w = new THREE.Mesh(wingGeo, wingMat);
+    w.rotation.x = -Math.PI / 2; w.scale.set(1, s, 1);
+    holder.add(w); hinge.add(holder);
+    hinge.userData.side = s; wings.push(hinge);
+  }
+  const legMat = std(0x9b6c39, 0.5);
+  function makeLeg(root) {
+    const g = new THREE.Group(); fly.add(g);
+    const femur = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 1, 8), legMat);
+    const tibia = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1, 8), legMat);
+    const tarsus = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.035, 1, 6), darkCut);
+    for (const m of [femur, tibia, tarsus]) { m.castShadow = true; g.add(m); }
+    return { root: root.clone(), femur, tibia, tarsus, target: new THREE.Vector3(), lenA: 0.95, lenB: 0.95 };
+  }
+  function place(mesh, a, b) {
+    const d = new THREE.Vector3().subVectors(b, a); const L = d.length();
+    mesh.position.copy(a).addScaledVector(d, 0.5);
+    mesh.scale.set(1, L, 1);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  }
+  function solveLeg(leg) {
+    const rootW = leg.root.clone().applyMatrix4(fly.matrixWorld);
+    const foot = leg.target.clone();
+    const ankle = foot.clone().add(new THREE.Vector3(0, 0.3, 0));
+    const toAnkle = new THREE.Vector3().subVectors(ankle, rootW);
+    const dist = Math.min(toAnkle.length(), leg.lenA + leg.lenB - 1e-3);
+    const dir = toAnkle.clone().normalize();
+    const a = leg.lenA, b = leg.lenB;
+    const cosA = (a * a + dist * dist - b * b) / (2 * a * dist);
+    const along = a * cosA, up = Math.sqrt(Math.max(a * a - along * along, 0));
+    const outward = new THREE.Vector3(rootW.x - fly.position.x, 0, 0).normalize();
+    const bendDir = new THREE.Vector3(0, 1, 0).add(outward.multiplyScalar(0.6)).normalize();
+    bendDir.addScaledVector(dir, -bendDir.dot(dir)).normalize();
+    const knee = rootW.clone().addScaledVector(dir, along).addScaledVector(bendDir, up);
+    const ankleReached = rootW.clone().addScaledVector(dir, dist);
+    const toLocal = new THREE.Matrix4().copy(fly.matrixWorld).invert();
+    place(leg.femur, rootW.clone().applyMatrix4(toLocal), knee.clone().applyMatrix4(toLocal));
+    place(leg.tibia, knee.clone().applyMatrix4(toLocal), ankleReached.clone().applyMatrix4(toLocal));
+    place(leg.tarsus, ankleReached.clone().applyMatrix4(toLocal), foot.clone().applyMatrix4(toLocal));
+  }
+  const legs = {
+    LF: makeLeg(new THREE.Vector3(-0.3, -0.25, -0.45)), RF: makeLeg(new THREE.Vector3(0.3, -0.25, -0.45)),
+    LM: makeLeg(new THREE.Vector3(-0.36, -0.3, 0.0)), RM: makeLeg(new THREE.Vector3(0.36, -0.3, 0.0)),
+    LH: makeLeg(new THREE.Vector3(-0.3, -0.3, 0.42)), RH: makeLeg(new THREE.Vector3(0.3, -0.3, 0.42)),
+  };
+  for (const k of ["LF", "RF"]) { legs[k].lenA = 1.35; legs[k].lenB = 1.35; }
+  for (const k of ["LH", "RH"]) { legs[k].lenA = 1.05; legs[k].lenB = 1.1; }
+  fly.position.set(0, TOP + 1.15, 0.9);
+  fly.scale.setScalar(1.25);
+  const dCentre = new THREE.Vector3(-3.35, TOP + 0.26, 0.05);
+  const standing = {
+    LM: new THREE.Vector3(-1.55, TOP, 0.95), RM: new THREE.Vector3(1.55, TOP, 0.95),
+    LH: new THREE.Vector3(-1.05, TOP, 2.25), RH: new THREE.Vector3(1.05, TOP, 2.25),
+  };
+
+  // ---------- HUD ----------
+  const DN = [
+    ["steer_left", "DNa02 L"], ["steer_right", "DNa02 R"], ["wing_left", "DNg02 L"], ["wing_right", "DNg02 R"],
+    ["lean_left", "DNa01 L"], ["lean_right", "DNa01 R"], ["accelerate", "DNp09 gas"], ["brake", "MDN brake"],
+    ["boost", "DNp01 GF"],
+  ];
+  const dnEl = document.getElementById("dns"), dnBars = {};
+  for (const [k, label] of DN) {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="lbl">${label}</span><span class="bar"><i></i></span><span class="val">0</span>`;
+    dnEl.appendChild(row); dnBars[k] = { bar: row.querySelector("i"), val: row.querySelector(".val") };
+  }
+  const keyNames = ["LEFT", "RIGHT", "UP", "DOWN", "B", "Y", "A", "X", "L", "R"];
+  const keysEl = document.getElementById("keys"), keyEls = {};
+  for (const k of keyNames) {
+    const s = document.createElement("span");
+    s.textContent = { LEFT: "←", RIGHT: "→", UP: "↑", DOWN: "↓" }[k] || k;
+    keysEl.appendChild(s); keyEls[k] = s;
+  }
+  const $ = (id) => document.getElementById(id);
+  const DRIVERS = {
+    fly: ["fly", "The fly's own synapses learned from the owner's races and from a pilot's corrections. Nothing but its FlyWire brain chooses the buttons."],
+    augmented: ["augmented fly", "The FlyWire brain plus an artificial neural implant: electrodes read its neurons, a small trained network stimulates its descending neurons. Not the fly alone."],
+    pilot: ["pilot (reference)", "A scripted driver reading position from game memory. Shown for comparison; it is not the fly."],
+  };
+  function setDriver(kind) {
+    const d = DRIVERS[kind] || DRIVERS.fly;
+    $("driver").textContent = d[0]; $("driver").className = "driver " + kind; $("blurb").textContent = d[1];
+  }
+  const COUNTDOWN = 341;   // frames from our start-line state to the race clock starting
+  function fmtTime(frames) {
+    const s = frames / 60.0988, m = Math.floor(s / 60), r = s - m * 60;
+    return `${m}'${String(Math.floor(r)).padStart(2, "0")}"${String(Math.floor((r % 1) * 100)).padStart(2, "0")}`;
+  }
+
+  // ---------- state shared by both feeds ----------
+  let pressed = new Set(), rates = {}, playing = true;
+  function show(st) {
+    pressed = new Set(st.buttons || []); rates = st.rates || {};
+    for (const [k] of DN) {
+      const v = rates[k] || 0;
+      dnBars[k].bar.style.width = Math.min(100, v / 1.5) + "%";
+      dnBars[k].val.textContent = v >= 149.5 ? "150+" : v.toFixed(0);
+    }
+    for (const k of keyNames) keyEls[k].classList.toggle("on", pressed.has(k));
+    if (st.lap !== undefined) $("lap").textContent = `${Math.min(st.lap, 5)}/5`;
+    if (st.race_frames !== undefined) $("clock").textContent = fmtTime(Math.max(0, st.race_frames - COUNTDOWN));
+    if (st.speed !== undefined) $("kmh").textContent = Math.round(st.speed / 4.6);
+    if (st.energy !== undefined) { $("b-power").style.width = (st.energy * 100) + "%"; $("v-power").textContent = Math.round(st.energy * 100); }
+    const fin = st.lap >= 5;
+    $("finish").hidden = !fin;
+    if (fin && st.finish_frames) $("finish-time").textContent = fmtTime(st.finish_frames - COUNTDOWN);
+  }
+
+  // live feed: WebSocket from `flyzero live` (text = state JSON, binary = [type byte][payload])
+  let audio = null, audioRate = 32040, audioT = 0;
+  function playPcm(buf) {
+    if (!audio) return;
+    const pcm = new Int16Array(buf.slice(1, 1 + ((buf.byteLength - 1) & ~1)));   // copy: offset 1 isn't 2-aligned
+    const n = pcm.length >> 1;
+    if (!n) return;
+    const ab = audio.createBuffer(2, n, audioRate);
+    const L = ab.getChannelData(0), R = ab.getChannelData(1);
+    for (let i = 0; i < n; i++) { L[i] = pcm[2 * i] / 32768; R[i] = pcm[2 * i + 1] / 32768; }
+    const src = audio.createBufferSource(); src.buffer = ab; src.connect(audio.destination);
+    const now = audio.currentTime;
+    if (audioT < now + 0.03 || audioT > now + 0.5) audioT = now + 0.08;   // jitter buffer, drop lag
+    src.start(audioT); audioT += ab.duration;
+  }
+  function liveFeed() {
+    const ws = new WebSocket(`ws://${location.hostname}:${Number(location.port || 80) + 1}/`);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => { $("status").textContent = "live"; $("status").className = "status live"; };
+    ws.onclose = () => { $("status").textContent = "disconnected"; $("status").className = "status"; setTimeout(liveFeed, 1500); };
+    ws.onmessage = (ev) => {
+      if (typeof ev.data === "string") {
+        const st = JSON.parse(ev.data);
+        if (st.hello) { setDriver(st.driver); audioRate = st.audio_rate || audioRate; return; }
+        if (playing) show(st);
+        if (st.sim_fps !== undefined) $("speed").textContent = `brain: ${st.sim_fps.toFixed(0)} frames/s (game: 60)`;
+        return;
+      }
+      const type = new Uint8Array(ev.data, 0, 1)[0];
+      if (type === 1 && playing) {
+        createImageBitmap(new Blob([new Uint8Array(ev.data, 1)], { type: "image/jpeg" })).then((bmp) => {
+          crtCtx.drawImage(bmp, 0, 0); ctex.needsUpdate = true; bmp.close && bmp.close();
+        });
+      } else if (type === 2 && playing) playPcm(ev.data);
+    };
+  }
+
+  // recorded feed (published artifact): trace.json + game video
+  let trace = null, video = null;
+  function recordedFeed() {
+    $("status").textContent = "recorded race";
+    video = document.createElement("video");
+    Object.assign(video, { muted: true, loop: true, playsInline: true });
+    for (const [src, type] of [["game.mp4", "video/mp4"], ["game.webm", "video/webm"]]) {
+      const el = document.createElement("source"); el.src = src; el.type = type; video.appendChild(el);
+    }
+    video.setAttribute("muted", ""); video.setAttribute("playsinline", "");
+    const vtex = new THREE.VideoTexture(video); vtex.encoding = THREE.sRGBEncoding; vtex.magFilter = THREE.NearestFilter;
+    screenMat.map = vtex; screenMat.needsUpdate = true;
+    fetch("trace.json").then(r => r.json()).then(j => { trace = j; setDriver(j.driver || "fly"); }).catch(() => {});
+    video.play().catch(() => {});
+  }
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && location.protocol === "http:";
+  if (isLocal) liveFeed(); else recordedFeed();
+
+  // ---------- animation ----------
+  const smooth = { dx: 0, dz: 0, rf: new THREE.Vector3(), lean: 0 };
+  const ease = (cur, tgt, k) => cur + (tgt - cur) * k;
+  function update(dt, time) {
+    if (trace && video) {
+      const t = video.currentTime || 0;
+      const i = Math.min(trace.frames.length - 1, Math.floor(t * (trace.fps || 60)));
+      show(trace.frames[i]);
+      $("speed").textContent = "";
+    }
+    const k = 1 - Math.exp(-dt * 18);
+    const tdx = (pressed.has("RIGHT") ? 1 : 0) - (pressed.has("LEFT") ? 1 : 0);
+    const tdz = (pressed.has("DOWN") ? 1 : 0) - (pressed.has("UP") ? 1 : 0);
+    smooth.dx = ease(smooth.dx, tdx, k); smooth.dz = ease(smooth.dz, tdz, k);
+    dpad.rotation.z = -smooth.dx * 0.12; dpad.rotation.x = smooth.dz * 0.12;
+    legs.LF.target.set(dCentre.x + smooth.dx * 0.78, dCentre.y - Math.abs(smooth.dx) * 0.08, dCentre.z + smooth.dz * 0.78);
+    for (const [name, m] of Object.entries(face)) {
+      const on = pressed.has(name);
+      m.position.y = ease(m.position.y, m.userData.rest - (on ? 0.12 : 0), k);
+      m.material.emissiveIntensity = ease(m.material.emissiveIntensity, on ? 0.9 : 0, k);
+    }
+    // L / R: DNa01 (saccade-like turns). The shoulder button sinks and glows; the fly banks hard
+    for (const [name, m] of Object.entries(shoulders)) {
+      const on = pressed.has(name);
+      m.position.y = ease(m.position.y, m.userData.rest - (on ? 0.1 : 0), k);
+      m.material.emissiveIntensity = ease(m.material.emissiveIntensity, on ? 0.9 : 0, k);
+    }
+    const tl = (pressed.has("R") ? 1 : 0) - (pressed.has("L") ? 1 : 0);
+    smooth.lean = ease(smooth.lean, tl, k);
+    const aim = pressed.has("A") ? face.A : pressed.has("Y") ? face.Y : face.B;
+    const goal = aim.position.clone().add(new THREE.Vector3(0, 0.2, 0));
+    if (!pressed.has("B") && !pressed.has("A") && !pressed.has("Y")) goal.y += 0.45;
+    smooth.rf.lerp(goal, k); legs.RF.target.copy(smooth.rf);
+    fly.rotation.z = ease(fly.rotation.z, smooth.dx * 0.08 + smooth.lean * 0.22, k);
+    fly.rotation.y = ease(fly.rotation.y, -smooth.dx * 0.1 - smooth.lean * 0.25, k);
+    fly.position.y = TOP + 1.15 + Math.sin(time * 2.1) * 0.015;
+    head.rotation.y = Math.sin(time * 0.7) * 0.08 - smooth.dx * 0.18 - smooth.lean * 0.2;
+    const buzz = pressed.has("A") ? 1 : 0;
+    wings.forEach(w => {
+      const s = w.userData.side;
+      const tilt = -s * smooth.lean * 0.35;   // banking: wings dip towards the lean
+      w.rotation.z = buzz ? s * (0.6 + Math.sin(time * 90) * 0.5) : ease(w.rotation.z, tilt, k);
+    });
+    fly.updateMatrixWorld(true);
+    for (const [name, leg] of Object.entries(legs)) {
+      if (standing[name]) leg.target.copy(standing[name]);
+      solveLeg(leg);
+    }
+  }
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.fov = w < 600 ? 44 : 32; camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize); resize();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (playing) update(dt, now / 1000);
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  const playBtn = $("play");
+  playBtn.addEventListener("click", () => {
+    playing = !playing; playBtn.textContent = playing ? "Pause" : "Play";
+    if (video) { if (playing) video.play().catch(() => {}); else video.pause(); }
+  });
+  const spinBtn = $("spin");
+  spinBtn.textContent = controls.autoRotate ? "Stop orbit" : "Orbit";
+  spinBtn.addEventListener("click", () => {
+    controls.autoRotate = !controls.autoRotate;
+    spinBtn.textContent = controls.autoRotate ? "Stop orbit" : "Orbit";
+  });
+  $("sound").addEventListener("click", () => {
+    if (video) { video.muted = !video.muted; $("sound").textContent = video.muted ? "Sound on" : "Sound off"; return; }
+    if (!audio) { audio = new (window.AudioContext || window.webkitAudioContext)(); $("sound").textContent = "Sound off"; }
+    else { audio.close(); audio = null; $("sound").textContent = "Sound on"; }
+  });
+  window.__flyScene = { camera, controls, renderer, scene };
+})();
+</script>

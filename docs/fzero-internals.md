@@ -95,6 +95,9 @@ behaviour. Offsets are from `$7E0000`.
 | Address | Size | Meaning | How it behaves | Conf. |
 |---|---|---|---|---|
 | `$7E0B20` | u16 LE | player speed | 0 at rest; rises to ~2,000–2,150 at Blue Falcon top speed under B; decays when coasting; drops on wall hits | 🟡 (matches HUD km/h trend; the unit→km/h factor is not pinned down, roughly ÷4.6) |
+| `$7E0B70` | u16 LE | player **x** (map units) | Mute City I spans x ≈ 340 … 6190. Found by requiring √(Δx²+Δy²) per frame to track `$0B20` speed (r = 0.72, best pair in low WRAM); the (x, y) path draws the track outline | ✅ |
+| `$7E0B90` | u16 LE | player **y** (map units) | Mute City I spans y ≈ 260 … 2940 | ✅ |
+| `$7E0BE0` | u16 LE | player **heading** | **0xC000 units per full turn** (0 … 0xBFFF). `atan2(dy, dx) = value / 0xC000 · 2π − π/2`, residual 2° against the direction of motion on a human race. RIGHT on the D-pad increases it | ✅ |
 | `$7E0D00` | u8 | player track segment | 0 → 58 over one lap of Mute City I (**59 segments**), resets at the finish line; decreases when driving the wrong way | ✅ |
 | `$7E0F53` | u8 | **laps completed** | 0 → 5, +1 at each finish-line crossing; 5 = race finished. Verified on a full human race (crossings at frames 1935, 3730, 5385, 7146, 8859) | ✅ |
 | `$7E0CF3` | u8 | lap-related flag, **not** a lap counter | 0→1 at the first lap line, then toggles between 0 and 1 during later laps (an earlier version of these notes got this wrong) | ❓ |
@@ -109,7 +112,7 @@ was a first lap of about 0'30"8 on Beginner, running 3rd.
 
 **Not found yet:**
 * **Energy (POWER).** No clean RAM candidate turned up. Read it from the HUD instead (below).
-* **Rank, lateral position on the track, race-over flag.** Several bytes near `$0C66`/`$0C86`
+* **Rank, race-over flag** (position and heading: see `$0B70`/`$0B90`/`$0BE0` above). Several bytes near `$0C66`/`$0C86`
   collapse at the moment of the explosion ("YOU LOST"), but they aren't identified.
 
 ## HUD pixels (frame coordinates, 256×224)

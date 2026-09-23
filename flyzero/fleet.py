@@ -21,7 +21,10 @@ BIAS_TYPES = ("DNa02", "DNg02*", "DNa01", "DNp09")
 
 class Fleet:
     def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=("DNa02", "DNa01", "DNg02*", "DNp09", "MDN"),
-                 bias_mv: float = 7.8, conn=None, core: str | None = None):
+                 bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
+                 deep: bool = False):
+        """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
+        ``deep``: also make the synapses onto the DNs' presynaptic partners plastic."""
         from . import connectome as cx
         from .batch import BatchMotor, plastic_positions
         from .biology import corrected
@@ -34,6 +37,10 @@ class Fleet:
         self.conn = conn = conn if conn is not None else corrected(cx.load())
         self.B = batch
         self.pos = plastic_positions(conn, plastic_types)
+        if deep:
+            from .batch import deep_positions
+
+            self.pos = np.union1d(self.pos, deep_positions(conn, self.pos))
         self.brain = BatchBrain(conn.weights, LIFParams(dt=0.25), batch=batch, seed=seed, plastic_pos=self.pos)
         v = dict(VISION)
         self.eye = MotionEye(conn, (224, 256), MotionParams(gain=10 ** v.pop("log_gain"), **v))
@@ -42,7 +49,8 @@ class Fleet:
         self.bias_mv = bias_mv
         self.brain.set_bias(self.bias_idx, bias_mv)
         self.eye_slots = self.brain.slots(self.eye.idx)
-        self.pool = EmulatorPool(rom, self.eye, batch, core=core)
+        ln = None if line is None else {k: v for k, v in np.load(line).items() if k in ("points", "speed")}
+        self.pool = EmulatorPool(rom, self.eye, batch, core=core, line=ln)
         self.window = 1000.0 / 60.0988
         self.extra_idx = np.zeros(0, np.int64)    # optional extra Poisson inputs (exploration, heat)
 
@@ -63,18 +71,26 @@ class Fleet:
         self.brain.reset(slots)
         self.motor.reset(slots)
 
-    def exam(self, state: bytes, frames: int, on_frame=None, log_every: int = 0) -> list[dict]:
-        """Every slot drives alone from ``state`` (no learning). Different spiking noise per slot."""
+    def exam(self, state: bytes, frames: int, on_frame=None, log_every: int = 0, record: bool = False) -> list[dict]:
+        """Every slot drives alone from ``state`` (no learning). Different spiking noise per slot.
+        ``record``: each result also holds the drive's inputs (``masks``) and DN rates (``rates``),
+        enough to replay it exactly (``live.save_run``)."""
+        from .record import buttons_to_mask
         self.brain.reset()
         self.motor.reset()
         rates, infos = self.pool.load([state] * self.B)
         progs = [Progress() for _ in range(self.B)]
         done = np.zeros(self.B, bool)
         res = [None] * self.B
+        masks, dn = [[] for _ in range(self.B)], [[] for _ in range(self.B)]
         t0 = time.time()
         for i in range(frames):
             counts = self.think(rates)
             buttons = self.motor.update(counts, self.window)
+            if record:
+                for k in np.flatnonzero(~done):
+                    masks[k].append(buttons_to_mask(buttons[k]))
+                    dn[k].append(self.motor.rates[k].astype(np.float16))
             rates, infos = self.pool.step(buttons)
             for k, info in enumerate(infos):
                 if done[k]:
@@ -84,6 +100,8 @@ class Fleet:
                     done[k] = True
                     res[k] = {"progress": progs[k].total, "lap": info["lap"], "frames": i + 1,
                               "energy": info["energy"], "finished": info["lap"] >= 5}
+                    if record:
+                        res[k]["masks"], res[k]["rates"] = np.array(masks[k]), np.array(dn[k])
             if on_frame:
                 on_frame(i, counts, buttons, infos)
             if log_every and (i + 1) % log_every == 0:
