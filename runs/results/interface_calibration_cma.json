@@ -1,0 +1,503 @@
+{
+ "best": {
+  "fitness": 17.0,
+  "progress": 17,
+  "best": 17,
+  "lap": 0,
+  "energy": 0.0,
+  "frames": 1800,
+  "finished": false,
+  "iface": {
+   "log_gain": 2.6608856549626827,
+   "y_min": 0.190057150730694,
+   "steer_threshold": 5.744555649128705,
+   "steer_bias": -30.665291773413106,
+   "tau_ms": 26.47815737147512,
+   "lean_threshold": 31.69574690806822,
+   "drive_hz": 66.5593782950995,
+   "flip": false
+  }
+ },
+ "log": [
+  {
+   "gen": 0,
+   "fitness": -1.0,
+   "progress": -1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.8284161354682533,
+    "y_min": 0.09346976450441358,
+    "steer_threshold": 2.013528479787177,
+    "steer_bias": -38.62769812514199,
+    "tau_ms": 152.69631787125476,
+    "lean_threshold": 115.93058238151622,
+    "drive_hz": 122.81591556477306,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.6117844805434975,
+    "y_min": 0.032063030656096496,
+    "steer_threshold": 4.357690886586452,
+    "steer_bias": 52.63701365754106,
+    "tau_ms": 105.05676400613979,
+    "lean_threshold": 5.61509838224715,
+    "drive_hz": 46.173450678235206,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 0.0,
+   "progress": 0,
+   "best": 2,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.578222415591073,
+    "y_min": 0.19597881597873973,
+    "steer_threshold": 5.965122302621561,
+    "steer_bias": -31.60358025749046,
+    "tau_ms": 83.54605603854927,
+    "lean_threshold": 43.310147735388945,
+    "drive_hz": 30.54722053129771,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.5838090920182033,
+    "y_min": 0.1543354037153979,
+    "steer_threshold": 21.758535508182565,
+    "steer_bias": 32.43150912698272,
+    "tau_ms": 24.90011564014788,
+    "lean_threshold": 6.176906128887602,
+    "drive_hz": 30.222502421678943,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 6.449999999999999,
+   "progress": 3,
+   "best": 3,
+   "lap": 0,
+   "energy": 0.69,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.863377079390732,
+    "y_min": 0.07637544355106034,
+    "steer_threshold": 3.1770525860089434,
+    "steer_bias": -14.283433037100927,
+    "tau_ms": 24.73041243476823,
+    "lean_threshold": 30.732055891512434,
+    "drive_hz": 35.83525036434922,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.9935410545513603,
+    "y_min": 0.1996368491849169,
+    "steer_threshold": 15.48540569129867,
+    "steer_bias": 58.37456115877161,
+    "tau_ms": 142.33349041992332,
+    "lean_threshold": 5.192707686523475,
+    "drive_hz": 30.681409881499544,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 5.0,
+   "progress": 5,
+   "best": 5,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.618949270187073,
+    "y_min": 0.32041800490679506,
+    "steer_threshold": 11.18891844618699,
+    "steer_bias": -22.932334678403365,
+    "tau_ms": 96.03735891577608,
+    "lean_threshold": 132.08355363919284,
+    "drive_hz": 64.32590768140943,
+    "flip": false
+   }
+  },
+  {
+   "gen": 0,
+   "fitness": 2.0,
+   "progress": 2,
+   "best": 2,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.3147735859507836,
+    "y_min": 0.028382605072341482,
+    "steer_threshold": 2.857395768136967,
+    "steer_bias": -41.13153650942171,
+    "tau_ms": 50.65437288280692,
+    "lean_threshold": 5.077942581311758,
+    "drive_hz": 81.11933997773454,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 2,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.499542152517999,
+    "y_min": 0.000597100031605915,
+    "steer_threshold": 3.3591947255134453,
+    "steer_bias": -17.538313614980318,
+    "tau_ms": 46.382215302898565,
+    "lean_threshold": 7.036106399798202,
+    "drive_hz": 70.0754435826607,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 5.0,
+   "progress": 5,
+   "best": 6,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.7581065027423195,
+    "y_min": 0.07228764287688698,
+    "steer_threshold": 21.598150423316,
+    "steer_bias": -40.42246697641562,
+    "tau_ms": 101.2545554526406,
+    "lean_threshold": 75.87213731764389,
+    "drive_hz": 47.86523653685653,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.709016617706796,
+    "y_min": 0.47990085355727274,
+    "steer_threshold": 11.589874208925723,
+    "steer_bias": -18.55250153639868,
+    "tau_ms": 55.35573533834361,
+    "lean_threshold": 106.83172348233124,
+    "drive_hz": 30.88214536129162,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 0.0,
+   "progress": 0,
+   "best": 2,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.2281718411929425,
+    "y_min": 0.10737010692859938,
+    "steer_threshold": 2.0222988657926217,
+    "steer_bias": -9.848941842483882,
+    "tau_ms": 77.61705648652463,
+    "lean_threshold": 6.4672327925179935,
+    "drive_hz": 65.1574640007911,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": -1.0,
+   "progress": -1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.8552278539227447,
+    "y_min": 0.047488216185827575,
+    "steer_threshold": 20.67291186735747,
+    "steer_bias": -15.245241050621026,
+    "tau_ms": 20.070475387503354,
+    "lean_threshold": 8.20443672014844,
+    "drive_hz": 73.3291843419388,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 17.0,
+   "progress": 17,
+   "best": 17,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.6608856549626827,
+    "y_min": 0.190057150730694,
+    "steer_threshold": 5.744555649128705,
+    "steer_bias": -30.665291773413106,
+    "tau_ms": 26.47815737147512,
+    "lean_threshold": 31.69574690806822,
+    "drive_hz": 66.5593782950995,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 5.65,
+   "progress": 4,
+   "best": 5,
+   "lap": 0,
+   "energy": 0.33,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.8640419828035943,
+    "y_min": 0.16175672652474085,
+    "steer_threshold": 7.346676533412098,
+    "steer_bias": -44.409032152837156,
+    "tau_ms": 82.53248550048565,
+    "lean_threshold": 9.279308362763906,
+    "drive_hz": 32.36297540863488,
+    "flip": false
+   }
+  },
+  {
+   "gen": 1,
+   "fitness": 5.0,
+   "progress": 5,
+   "best": 5,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.795269851038099,
+    "y_min": 0.12613473130471928,
+    "steer_threshold": 2.3580419364594167,
+    "steer_bias": -54.8440973862147,
+    "tau_ms": 98.99771398710406,
+    "lean_threshold": 79.89029730294008,
+    "drive_hz": 60.22980505440981,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 4.0,
+   "progress": 4,
+   "best": 4,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.4228489098525805,
+    "y_min": 0.367163170181925,
+    "steer_threshold": 15.369912564647322,
+    "steer_bias": -46.55312577530806,
+    "tau_ms": 70.22128408096106,
+    "lean_threshold": 40.492131888178,
+    "drive_hz": 33.70973928417684,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 1.0,
+   "progress": 1,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.8022211037270877,
+    "y_min": 0.5002583884617513,
+    "steer_threshold": 41.01410757041192,
+    "steer_bias": -54.77653623370893,
+    "tau_ms": 132.86783200055626,
+    "lean_threshold": 48.30736895737167,
+    "drive_hz": 64.80209499146005,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": -2.0,
+   "progress": -2,
+   "best": 1,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.4320027166463087,
+    "y_min": 0.25459151252411705,
+    "steer_threshold": 17.923171870506096,
+    "steer_bias": 10.589093733236254,
+    "tau_ms": 29.001514095935676,
+    "lean_threshold": 84.6136518219669,
+    "drive_hz": 64.90197430450468,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 4.15,
+   "progress": 4,
+   "best": 4,
+   "lap": 0,
+   "energy": 0.03,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.515423198630749,
+    "y_min": 0.05319932800083364,
+    "steer_threshold": 8.878863453512015,
+    "steer_bias": 6.547960623044517,
+    "tau_ms": 76.65416498144575,
+    "lean_threshold": 5.03098100998343,
+    "drive_hz": 32.91334007762813,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 10.0,
+   "progress": 10,
+   "best": 10,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 3.176807597362351,
+    "y_min": 0.18401975758716838,
+    "steer_threshold": 18.428876410485795,
+    "steer_bias": -42.43839043200039,
+    "tau_ms": 26.06611734448022,
+    "lean_threshold": 15.3892561507981,
+    "drive_hz": 31.008758418178395,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 5.0,
+   "progress": 5,
+   "best": 11,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.543780298127416,
+    "y_min": 0.06740854145174063,
+    "steer_threshold": 20.811364769871687,
+    "steer_bias": -21.249309543307277,
+    "tau_ms": 164.42999868506388,
+    "lean_threshold": 47.866227964816,
+    "drive_hz": 70.4190546230124,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 7.0,
+   "progress": 7,
+   "best": 7,
+   "lap": 0,
+   "energy": 0.0,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.673294761246721,
+    "y_min": 0.22698677903295147,
+    "steer_threshold": 2.6443739407841855,
+    "steer_bias": -40.4149895889464,
+    "tau_ms": 27.15131378453603,
+    "lean_threshold": 62.15433335457689,
+    "drive_hz": 61.73552032503551,
+    "flip": false
+   }
+  },
+  {
+   "gen": 2,
+   "fitness": 7.6,
+   "progress": 4,
+   "best": 5,
+   "lap": 0,
+   "energy": 0.72,
+   "frames": 1800,
+   "finished": false,
+   "iface": {
+    "log_gain": 2.89217926070609,
+    "y_min": 0.06856481678626546,
+    "steer_threshold": 17.36321040807853,
+    "steer_bias": -23.365553177445918,
+    "tau_ms": 37.6305436221834,
+    "lean_threshold": 37.289791529339574,
+    "drive_hz": 44.38415091288833,
+    "flip": false
+   }
+  }
+ ]
+}

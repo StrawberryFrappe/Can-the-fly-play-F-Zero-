@@ -1,0 +1,14 @@
+{"fly": 2, "eta": 0.003, "epoch": 0, "exam": {"progress": 1, "lap": 0, "frames": 708, "energy": 0.61}}
+{"fly": 0, "eta": 0.0003, "epoch": 0, "exam": {"progress": 1, "lap": 0, "frames": 708, "energy": 0.64}}
+{"fly": 3, "eta": 0.01, "epoch": 0, "exam": {"progress": 1, "lap": 0, "frames": 708, "energy": 0.61}}
+{"fly": 1, "eta": 0.001, "epoch": 0, "exam": {"progress": 3, "lap": 0, "frames": 1953, "energy": 0.38}}
+{"fly": 0, "eta": 0.0003, "epoch": 1, "err_hz": 14.4, "drift": 0.0494, "exam": {"progress": 4, "lap": 0, "frames": 683, "energy": 0.0}, "mins": 11.7}
+{"fly": 3, "eta": 0.01, "epoch": 1, "err_hz": 12.29, "drift": 0.0819, "exam": {"progress": -1, "lap": 0, "frames": 1187, "energy": 0.0}, "mins": 12.4}
+{"fly": 2, "eta": 0.003, "epoch": 1, "err_hz": 12.2, "drift": 0.0642, "exam": {"progress": 4, "lap": 0, "frames": 1738, "energy": 0.0}, "mins": 12.9}
+{"fly": 1, "eta": 0.001, "epoch": 1, "err_hz": 14.99, "drift": 0.0621, "exam": {"progress": 20, "lap": 0, "frames": 1932, "energy": 0.0}, "mins": 13.2}
+{"fly": 0, "eta": 0.0003, "epoch": 2, "err_hz": 14.21, "drift": 0.0544, "exam": {"progress": -4, "lap": 0, "frames": 730, "energy": 0.0}, "mins": 11.9}
+{"fly": 3, "eta": 0.01, "epoch": 2, "err_hz": 11.94, "drift": 0.0848, "exam": {"progress": 1, "lap": 0, "frames": 1388, "energy": 0.0}, "mins": 12.6}
+{"fly": 2, "eta": 0.003, "epoch": 2, "err_hz": 12.01, "drift": 0.0743, "exam": {"progress": -1, "lap": 0, "frames": 1226, "energy": 0.0}, "mins": 12.3}
+{"fly": 1, "eta": 0.001, "epoch": 2, "err_hz": 13.58, "drift": 0.0682, "exam": {"progress": 1, "lap": 0, "frames": 906, "energy": 0.0}, "mins": 12.1}
+/usr/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 6 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

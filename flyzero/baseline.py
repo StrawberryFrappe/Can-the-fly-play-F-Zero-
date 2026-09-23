@@ -77,6 +77,8 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
 
     torch.manual_seed(seed)
     torch.set_num_threads(threads)
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {dev}", flush=True)
     Path(out).mkdir(parents=True, exist_ok=True)
     L = np.load(lessons_path)
     game = FZero(rom, skip_menu=True)
@@ -104,11 +106,11 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
 
     # 2. train (last 10% held out, in time order)
     split = int(n * 0.9)
-    net = build_net()
+    net = build_net().to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     # class weights: rare actions (turns, leans) matter
-    wts = [torch.tensor(1.0 / np.maximum(np.bincount(Y[:split, k], minlength=c), 1) ** 0.5, dtype=torch.float32)
-           for k, c in enumerate((3, 3, 2, 2))]
+    wts = [torch.tensor(1.0 / np.maximum(np.bincount(Y[:split, k], minlength=c), 1) ** 0.5, dtype=torch.float32,
+                        device=dev) for k, c in enumerate((3, 3, 2, 2))]
     Xt = torch.from_numpy(X).permute(0, 3, 1, 2)
     Yt = torch.from_numpy(Y)
     for ep in range(epochs):
@@ -117,9 +119,9 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
         net.train()
         for b in range(0, split, 256):
             idx = perm[b:b + 256]
-            xb, yb = Xt[idx].float() / 255.0, Yt[idx].clone()
+            xb, yb = Xt[idx].to(dev).float() / 255.0, Yt[idx].to(dev)
             if mirror:  # mirror world for half the batch: flip the view, swap left/right
-                flip = torch.rand(len(idx)) < 0.5
+                flip = torch.rand(len(idx), device=dev) < 0.5
                 xb[flip] = xb[flip].flip(-1)
                 for k in (0, 1):
                     col = yb[flip, k]
@@ -133,7 +135,7 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
             for k in range(4):
                 preds = []
                 for b in range(split, n, 1024):
-                    preds.append(net(Xt[b:b + 1024].float() / 255.0)[k].argmax(1))
+                    preds.append(net(Xt[b:b + 1024].to(dev).float() / 255.0)[k].argmax(1).cpu())
                 accs.append(float((torch.cat(preds) == Yt[split:, k]).float().mean()))
         print(json.dumps({"epoch": ep + 1, "loss": round(float(loss), 3),
                           "heldout_acc": dict(zip(("steer", "lean", "gas", "brake"), [round(a, 3) for a in accs])),
@@ -149,7 +151,7 @@ def run(rom: str, lessons_path: str, exam_state: str, out: str, epochs: int = 6,
     with torch.no_grad():
         for i in range(exam_frames):
             cur = observe(frame)
-            s, le, g, br = (o.argmax(1).item() for o in net(to_tensor(cur, prev)))
+            s, le, g, br = (o.argmax(1).item() for o in net(to_tensor(cur, prev).to(dev)))
             prev = cur
             buttons = {"LEFT": s == 1, "RIGHT": s == 2, "L": le == 1, "R": le == 2, "B": g == 1, "Y": br == 1}
             frame = game.step(buttons)

@@ -270,11 +270,23 @@ def main(argv=None):
     te.add_argument("--rom", required=True)
     te.add_argument("--lessons", required=True)
     te.add_argument("--exam", required=True, help="start-line save state for the solo exam")
-    te.add_argument("--epochs", type=int, default=4)
+    te.add_argument("--epochs", type=int, default=1, help="passes over all lessons (0 = practice only)")
     te.add_argument("--exam-frames", type=int, default=3600)
     te.add_argument("--out", default="taught")
+    te.add_argument("--etas", default="3e-4,1e-3,3e-3,1e-2",
+                    help="lesson learning rates, one fly (= one CPU process) each")
+    te.add_argument("--practice", type=int, default=40, help="solo reward-learning drives after the lessons")
+    te.add_argument("--practice-frames", type=int, default=2400)
+    te.add_argument("--reward-eta", type=float, default=5e-4)
+    te.add_argument("--init", help="start from a taught fly's weights (.npz), e.g. to resume")
+    te.add_argument("--smooth", type=float, default=15.0, help="teach intent smoothed over N frames (0 = taps)")
+    te.add_argument("--no-mirror", action="store_true")
+    te.add_argument("--bias-mv", type=float, default=7.8, help="steady depolarisation of the motor neurons")
     te.set_defaults(func=lambda a: __import__("flyzero.teach", fromlist=["teach"]).teach(
-        a.rom, a.lessons, a.exam, a.epochs, a.exam_frames, a.out))
+        a.rom, a.lessons, a.exam, a.epochs, a.exam_frames, a.out,
+        etas=tuple(float(x) for x in a.etas.split(",")), bias_mv=a.bias_mv, mirror=not a.no_mirror,
+        smooth=a.smooth, practice=a.practice, practice_frames=a.practice_frames,
+        reward_eta=a.reward_eta, init=a.init))
 
     bl = sub.add_parser("baseline", help="the comparison: a small CNN taught from the same races")
     bl.add_argument("--rom", required=True)
@@ -285,6 +297,20 @@ def main(argv=None):
     bl.add_argument("--out", default="baseline")
     bl.set_defaults(func=lambda a: __import__("flyzero.baseline", fromlist=["run"]).run(
         a.rom, a.lessons, a.exam, a.out, a.epochs, a.exam_frames))
+
+    ss = sub.add_parser("start-state", help="save the Mute City I start line (run the menus once)")
+    ss.add_argument("--rom", required=True)
+    ss.add_argument("--out", default="start.state")
+    ss.add_argument("--league", default="knight", choices=["knight", "queen", "king"])
+    ss.add_argument("--core", help="snes9x libretro core (.dll on Windows) instead of stable-retro")
+
+    def _start_state(a):
+        from .games import FZero
+        g = FZero(a.rom, core=a.core, league=a.league)
+        g.reset()
+        g.save_state(a.out)
+        print(f"saved {a.out} ({g.backend}); the exam starts here")
+    ss.set_defaults(func=_start_state)
 
     args = ap.parse_args(argv)
     if getattr(args, "drive", None) is None and args.cmd == "play":
