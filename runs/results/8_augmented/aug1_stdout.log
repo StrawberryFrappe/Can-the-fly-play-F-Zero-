@@ -1,0 +1,69 @@
+augmented fly: 1066 electrodes, host work/r3g/fly0_f800000.npz
+{"round": 0, "dataset": 45873, "loss": 0.728, "mins": 16.0, "exam": {"mean_progress": 17.6, "best": 40, "worst": -3, "laps_best": 0, "finished": 0, "n": 8, "mean_frames": 2729, "each": [20, 23, -1, -3, 40, 4, 39, 19]}}
+{"round": 1, "dataset": 90016, "loss": 0.72, "mins": 38.7, "exam": {"mean_progress": 41.8, "best": 47, "worst": 35, "laps_best": 0, "finished": 0, "n": 8, "mean_frames": 3136, "each": [42, 35, 46, 38, 47, 44, 39, 43]}}
+{"round": 2, "dataset": 138275, "loss": 1.067, "mins": 65.9, "exam": {"mean_progress": 43.1, "best": 102, "worst": 22, "laps_best": 1, "finished": 0, "n": 8, "mean_frames": 3285, "each": [52, 27, 102, 46, 22, 29, 23, 44]}}
+{"round": 3, "dataset": 184714, "loss": 0.701, "mins": 95.8, "exam": {"mean_progress": 90.4, "best": 154, "worst": 29, "laps_best": 2, "finished": 0, "n": 8, "mean_frames": 4979, "each": [100, 50, 29, 154, 119, 67, 99, 105]}}
+Process SpawnProcess-2:
+Process SpawnProcess-3:
+Process SpawnProcess-1:
+Process SpawnProcess-4:
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 55, in _worker
+    conn.send((look(frame), labelled(game.info)) + extra)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 206, in send
+    self._send_bytes(_ForkingPickler.dumps(obj))
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 420, in _send_bytes
+    self._send(header)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 384, in _send
+    n = write(self._handle, buf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 55, in _worker
+    conn.send((look(frame), labelled(game.info)) + extra)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 206, in send
+    self._send_bytes(_ForkingPickler.dumps(obj))
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 420, in _send_bytes
+    self._send(header)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 384, in _send
+    n = write(self._handle, buf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 55, in _worker
+    conn.send((look(frame), labelled(game.info)) + extra)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 206, in send
+    self._send_bytes(_ForkingPickler.dumps(obj))
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 420, in _send_bytes
+    self._send(header)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 384, in _send
+    n = write(self._handle, buf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 55, in _worker
+    conn.send((look(frame), labelled(game.info)) + extra)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 206, in send
+    self._send_bytes(_ForkingPickler.dumps(obj))
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 420, in _send_bytes
+    self._send(header)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 384, in _send
+    n = write(self._handle, buf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe

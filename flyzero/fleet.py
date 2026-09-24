@@ -111,7 +111,7 @@ class Fleet:
                 if info["done"] or i == frames - 1:
                     done[k] = True
                     res[k] = {"progress": progs[k].total, "lap": info["lap"], "frames": i + 1,
-                              "energy": info["energy"], "finished": info["lap"] >= 5,
+                              "energy": info["energy"], "finished": bool(info.get("finished")), "laps5": info["lap"] >= 5,
                               "rank": info.get("rank")}
                     if record:
                         res[k]["masks"], res[k]["rates"] = np.array(masks[k]), np.array(dn[k])
@@ -129,5 +129,6 @@ def summarize(results: list[dict]) -> dict:
     prog = [r["progress"] for r in results]
     return {"mean_progress": round(float(np.mean(prog)), 1), "best": int(max(prog)),
             "worst": int(min(prog)), "laps_best": max(r["lap"] for r in results),
-            "finished": sum(r["finished"] for r in results), "n": len(results),
+            "finished": sum(r["finished"] for r in results), "laps5": sum(r.get("laps5", False) for r in results),
+            "n": len(results),
             "mean_frames": int(np.mean([r["frames"] for r in results]))}

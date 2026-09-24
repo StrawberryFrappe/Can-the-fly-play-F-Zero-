@@ -240,7 +240,8 @@ def run(a):
                 if inf["done"] or i == frames - 1:
                     live[k] = False
                     res[k] = {"progress": progs[k].total, "lap": inf["lap"], "frames": i + 1,
-                              "finished": inf["lap"] >= 5, "rank": inf.get("rank")}
+                              "finished": bool(inf.get("finished")), "laps5": inf["lap"] >= 5,
+                              "rank": inf.get("rank")}
                     if record:
                         res[k]["masks"], res[k]["rates"] = np.array(masks[k]), np.array(dn[k])
             if not live.any():
@@ -316,9 +317,10 @@ def run(a):
         with open(out / "log.jsonl", "a") as fh:
             fh.write(json.dumps(rec) + "\n")
         for k, x in enumerate(exam):
-            if x["finished"]:
-                save_run(out / f"finish_r{r}_{k}.npz", exam_state, x["masks"], x["rates"], "augmented",
-                         progress=x["progress"], laps=x["lap"], frames=x["frames"])
+            if x["finished"] or x.get("laps5"):   # "finish" = top 3; "5laps" = full distance, ranked out
+                tag = "finish" if x["finished"] else "5laps"
+                save_run(out / f"{tag}_r{r}_{k}.npz", exam_state, x["masks"], x["rates"], "augmented",
+                         progress=x["progress"], laps=x["lap"], frames=x["frames"], rank=x.get("rank"))
         if top["progress"] > best:
             best = top["progress"]
             save_run(out / "best_drive.npz", exam_state, top["masks"], top["rates"], "augmented",
