@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-BOOST_P = 0.25
+BOOST_P = 0.1
 CLAMP_GROUPS = ["a02L", "a02R", "g02L", "g02R", "a01L", "a01R", "gas", "brake", "gf"]
 
 
@@ -95,17 +95,18 @@ class Clamp:
             self.fleet.brain.bias_ext[:, j] = self.base[g] + cp.asarray(self.u[:, g])[:, None]
 
 
-def build_net(n_in: int):
+def build_net(n_in: int, width: int = 256):
     import torch.nn as nn
 
     class Implant(nn.Module):
         def __init__(self):
             super().__init__()
-            self.body = nn.Sequential(nn.Linear(n_in, 256), nn.ReLU(), nn.Dropout(0.1),
-                                      nn.Linear(256, 128), nn.ReLU())
-            self.steer, self.lean, self.gas, self.boost = (nn.Linear(128, 3), nn.Linear(128, 3),
-                                                           nn.Linear(128, 2), nn.Linear(128, 2))
-            self.analog = nn.Linear(128, 2)   # --taps: continuous steer and lean, like the pilot's
+            h = width // 2
+            self.body = nn.Sequential(nn.Linear(n_in, width), nn.ReLU(), nn.Dropout(0.1),
+                                      nn.Linear(width, h), nn.ReLU())
+            self.steer, self.lean, self.gas, self.boost = (nn.Linear(h, 3), nn.Linear(h, 3),
+                                                           nn.Linear(h, 2), nn.Linear(h, 2))
+            self.analog = nn.Linear(h, 2)   # --taps: continuous steer and lean, like the pilot's
 
         def forward(self, x):
             h = self.body(x)
@@ -166,7 +167,7 @@ def run(a):
     clamp = Clamp(fleet)
     ip = InstructParams()
     dev = torch.device("cuda")
-    net = build_net(len(idx)).to(dev)
+    net = build_net(len(idx), a.width).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-5)
     cap = a.cap
     X = torch.zeros((cap, len(idx)), dtype=torch.float16, device=dev)   # aggregated dataset (GPU)
@@ -356,6 +357,7 @@ def main(argv=None):
     ap.add_argument("--exam-drives", type=int, default=16)
     ap.add_argument("--host-drives", action="store_true", help="collect new data with the implant off")
     ap.add_argument("--taps", action="store_true", help="continuous steer/lean + tap-rate readout (the pilot's hands)")
+    ap.add_argument("--width", type=int, default=256, help="implant hidden units")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")

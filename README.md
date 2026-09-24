@@ -239,6 +239,58 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
 
     With the same teacher, the fly and a standard network are about even so far. Neither
     has finished: both run out of energy from wall contact.
+20. **What the owner saw when watching it drive live**, and what it turned out to be:
+    * *"The energy bar blinks when low, so your readings go 0, 15, 0…"* Our fault: DAgger
+      treated a blinking bar as a crash. POWER is now read from RAM (`$00C9`).
+    * *"It barely leans."* The pilot only leant when its steering saturated; you lean on 28% of
+      frames. It now leans from half steering, and it boosts right after the lap line, where a
+      boost is earned (also the owner's tip).
+    * *"It moves side to side for no reason."* Also ours:
+      * The pilot *taps* and its steering intent is continuous, but the fly's readout *holds* a
+        button whenever one side wins. Trained on the pilot's intent, the flies steered on
+        ~95% of frames and leant on ~85%.
+      * Teaching hold-style labels instead (full steer only when the pilot's |intent| > 0.5)
+        is what a button-holding pilot does, and that pilot still finishes. The natural fly
+        didn't adapt to the relabelling, though.
+    * *"When things go wrong it doesn't know what to do."* Training rewound every crash
+      (including fake ones from the blinking bar), so it rarely practised recoveries.
+    * One more thing the logs showed: **rank**. The SAFE position tightens every lap (15, 10,
+      …, 3 on the last). A drive that is merely alive gets "YOU LOST" at a lap line for being
+      too slow. Several drives ended at exactly 119 segments (the lap-2 line).
+21. **The natural ladder, finished as agreed:**
+    * Reward practice (rung 1) on top of the DAgger fly: harmful (the smallest rate kept 42
+      segments mean, the others collapsed to 0–5).
+    * Tap-rate readout: understeer (18–28 mean).
+    * Readout threshold recalibration: 10 Hz is best (25/20: 41.5; 40/30: 26.4; 60/40: 14.6).
+    * Plasticity **two layers deep** (10.3 M synapses onto 83,700 L2 neurons): unstable so
+      far.
+    * **The natural fly's result: 3 laps in its best drive, about 1 lap on average, never a
+      finish.** (It keeps training.)
+22. **The augmented fly** (`flyzero/implant.py`). A separate, clearly labelled model, per the
+    owner's rule: *"if you do it must be a distinctively different model"*.
+    * **Host:** the natural fly, unchanged.
+    * **Electrodes:** read the smoothed rates of up to ~4,900 of its neurons (the DNs'
+      presynaptic partners, visual projection neurons, and the L2 neurons most related to
+      steering). They read no pixels and no RAM.
+    * **Implant:** a small MLP on the GPU, trained by DAgger with the pilot as instructor.
+    * **Current injection** into the fly's own descending neurons, through a closed-loop
+      clamp. The DNs still spike, and the same readout presses the buttons.
+
+    What mattered, in order:
+
+    | Change | Mean segments per exam drive |
+    |---|---|
+    | L1 + VPN electrodes (1,066) | 42 → 90 over 3 rounds |
+    | + L2 electrodes (3,066) | 95 (round 0), then *worse* as the implant drove |
+    | − electrodes on descending neurons (reading its own commands: causal confusion) | 155 |
+    | + new data only while the host fly drives | 161 |
+    | + tap readout: continuous steer/lean, the pilot's own hands | 166 → **220** |
+
+    **In its best exam, 2 of 8 drives completed all 5 laps.** But they crossed the line 7th
+    and 6th, and the game's SAFE rank for the last lap is 3rd: **"YOU LOST"**. The pilot
+    finishes 2nd (2'20"61, the owner's best is 2'25"). The augmented fly has driven the full
+    distance of Mute City I, but it hasn't *finished* it in the game's sense yet. It's about
+    15% too slow.
 
 ### Earlier findings
 
