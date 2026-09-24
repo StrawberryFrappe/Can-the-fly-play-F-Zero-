@@ -144,7 +144,7 @@ def run_replay(hub: Hub, rom: str, path: str, loop: bool = True):
             return
 
 
-def export(rom: str, path: str, out: str):
+def export(rom: str, path: str, out: str, tail: int = 420):
     """A saved race -> ``game.mp4`` (with sound) + ``trace.json`` for the published page."""
     import subprocess
     import wave
@@ -163,8 +163,8 @@ def export(rom: str, path: str, out: str):
     game.collect_audio = True
     frames, finish = [], None
     silent = out / "silent.mp4"
-    w = imageio.get_writer(silent, fps=FPS, codec="libx264", quality=8, macro_block_size=8,
-                           ffmpeg_params=["-vf", "scale=512:448:flags=neighbor", "-pix_fmt", "yuv420p"])
+    w = imageio.get_writer(silent, fps=FPS, codec="libx264", macro_block_size=8,
+                           ffmpeg_params=["-crf", "34", "-preset", "slow"])   # ~9 MB for a whole race
     pcm = []
     for i, (m, r) in enumerate(zip(d["masks"], d["rates"].astype(np.float32))):
         b = mask_to_buttons(m)
@@ -173,6 +173,10 @@ def export(rom: str, path: str, out: str):
         if finish is None and game.info["lap"] >= 5:
             finish = i + 1
         frames.append(_state(i + 1, b, r, game.info, finish))
+    for j in range(tail):   # a few seconds after the line: the game's results screen
+        w.append_data(game._press({}))
+        pcm.append(game.pop_audio())
+        frames.append(_state(len(d["masks"]) + j + 1, {}, np.zeros(9), game.info, finish))
     w.close()
     with wave.open(str(out / "audio.wav"), "wb") as f:
         f.setnchannels(2); f.setsampwidth(2); f.setframerate(int(round(game.audio_rate())))
