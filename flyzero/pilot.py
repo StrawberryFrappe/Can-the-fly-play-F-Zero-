@@ -61,7 +61,7 @@ class PilotParams:
     min_speed: float = 300.0     # below this the pilot's steering label is neutral
     lean_start: float = 0.5      # steering command from which the pilot also leans, like the owner
     boost: bool = True           # super jet on the bottom straight (x, y below), from lap 2
-    boost_x: tuple = (2600.0, 4200.0)
+    boost_x: tuple = (2200.0, 4200.0)   # right after the line: a boost is earned each lap (owner's tip)
     boost_y_max: float = 600.0
 
 

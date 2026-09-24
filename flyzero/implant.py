@@ -28,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
+BOOST_P = 0.25
 CLAMP_GROUPS = ["a02L", "a02R", "g02L", "g02R", "a01L", "a01R", "gas", "brake", "gf"]
 
 
@@ -122,7 +123,11 @@ def classes(x: np.ndarray) -> np.ndarray:
 
 def intent_analog(outs) -> np.ndarray:
     """--taps: continuous steer / lean (tapped by the readout), most likely gas and boost."""
-    g, b = (o.argmax(1).cpu().numpy() for o in outs[2:4])
+    import torch
+
+    g = outs[2].argmax(1).cpu().numpy()
+    # boost labels are rare (once a lap, ~2% of frames): fire when the implant is fairly sure
+    b = (torch.softmax(outs[3], 1)[:, 1] > BOOST_P).cpu().numpy()
     a = outs[4].cpu().numpy()
     return np.stack([a[:, 0], a[:, 1], g.astype(float), np.zeros(len(g)), b.astype(float)], 1)
 
