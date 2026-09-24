@@ -120,9 +120,10 @@ class Pilot:
         # lean into sharp turns, like the owner (who leans on ~28% of frames)
         lean = float(np.sign(u) * np.clip((abs(u) - self.p.lean_start) / max(1.0 - self.p.lean_start, 1e-3), 0, 1))
         gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
-        # super jet like the owner: once a lap from lap 2, on the long straight, with energy to spare
+        # super jet as soon as it can: on the straight right after the line (one is earned per lap;
+        # with none in stock, A does nothing, so the label needn't know the lap - owner's tip)
         boost = 0.0
-        if self.p.boost and int(ram[0x0F53]) >= 1 and \
+        if self.p.boost and \
                 self.p.boost_x[0] < x < self.p.boost_x[1] and y < self.p.boost_y_max and \
                 (int(ram[0x00C9]) | int(ram[0x00CA]) << 8) > 1024:
             boost = 1.0

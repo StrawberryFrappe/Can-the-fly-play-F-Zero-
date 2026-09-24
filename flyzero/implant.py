@@ -279,16 +279,16 @@ def run(a):
         assert np.array_equal(nz["electrodes"], idx)
         mu, sd = cp.asarray(nz["mu"]), cp.asarray(nz["sd"])
         np.savez(out / "normaliser.npz", mu=nz["mu"], sd=nz["sd"], electrodes=idx)
-        if (r0 / "dataset.pt").exists():
+        if (r0 / "dataset.pt").exists() and not a.fresh_data:
             ds = torch.load(r0 / "dataset.pt")
             n = len(ds["Y"])
             X[:n], Y[:n] = ds["X"].to(dev), ds["Y"].to(dev)
             if "Ya" in ds:
                 Ya[:n] = ds["Ya"].to(dev)
             del ds
-        else:   # no saved dataset: a fresh round driven by the loaded implant
+        else:   # no saved dataset: a fresh round (driven by the host fly with --host-drives)
             while n < a.round_frames:
-                drive(a.episode_frames, True, True)
+                drive(a.episode_frames, not a.host_drives, True)
         print(f"resumed from {r0}: {n} samples", flush=True)
     else:
         # round 0: the natural fly drives (implant off), the pilot labels: first dataset + normaliser
@@ -363,6 +363,7 @@ def main(argv=None):
     ap.add_argument("--width", type=int, default=256, help="implant hidden units")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--fresh-data", action="store_true", help="with --resume: keep the implant, start a new dataset")
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")
     ap.add_argument("--out", required=True)
     run(ap.parse_args(argv))
