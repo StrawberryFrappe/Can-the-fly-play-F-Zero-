@@ -1,0 +1,76 @@
+augmented fly: 2918 electrodes, host work/r3g/fly0_f800000.npz
+resumed from work/aug11: 42048 samples
+{"round": 0, "dataset": 42048, "loss": 0.345, "mins": 8.2, "exam": {"mean_progress": 99.8, "best": 157, "worst": 36, "laps_best": 2, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 4954, "each": [117, 157, 119, 86, 120, 36, 44, 119]}}
+{"round": 1, "dataset": 82257, "loss": 0.221, "mins": 24.8, "exam": {"mean_progress": 66.1, "best": 116, "worst": 30, "laps_best": 1, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 3389, "each": [39, 30, 116, 86, 58, 110, 30, 60]}}
+Process SpawnProcess-4:
+Process SpawnProcess-1:
+Process SpawnProcess-3:
+Process SpawnProcess-2:
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 39, in _worker
+    msg = conn.recv()
+          ^^^^^^^^^^^
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 39, in _worker
+    msg = conn.recv()
+          ^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 430, in _recv_bytes
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 430, in _recv_bytes
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 399, in _recv
+    raise EOFError
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 399, in _recv
+    raise EOFError
+EOFError
+EOFError
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 39, in _worker
+    msg = conn.recv()
+          ^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 430, in _recv_bytes
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 399, in _recv
+    raise EOFError
+EOFError
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/pool.py", line 39, in _worker
+    msg = conn.recv()
+          ^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 430, in _recv_bytes
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/strawberry/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/connection.py", line 399, in _recv
+    raise EOFError
+EOFError
