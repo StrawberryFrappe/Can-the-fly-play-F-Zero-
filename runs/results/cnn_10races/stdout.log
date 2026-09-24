@@ -1,0 +1,16 @@
+device: cuda
+dataset: 142925 frames
+/home/strawberry/Projects/Can-the-fly-play-F-Zero-/flyzero/baseline.py:143: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+  print(json.dumps({"epoch": ep + 1, "loss": round(float(loss), 3),
+{"epoch": 1, "loss": 2.465, "heldout_acc": {"steer": 0.546, "lean": 0.601, "gas": 0.866, "brake": 1.0}, "secs": 22}
+{"epoch": 2, "loss": 2.204, "heldout_acc": {"steer": 0.622, "lean": 0.581, "gas": 0.894, "brake": 1.0}, "secs": 20}
+{"epoch": 3, "loss": 2.038, "heldout_acc": {"steer": 0.592, "lean": 0.578, "gas": 0.853, "brake": 1.0}, "secs": 19}
+{"epoch": 4, "loss": 1.792, "heldout_acc": {"steer": 0.6, "lean": 0.608, "gas": 0.834, "brake": 1.0}, "secs": 17}
+{"epoch": 5, "loss": 1.997, "heldout_acc": {"steer": 0.579, "lean": 0.622, "gas": 0.852, "brake": 1.0}, "secs": 19}
+{"epoch": 6, "loss": 1.824, "heldout_acc": {"steer": 0.563, "lean": 0.567, "gas": 0.848, "brake": 1.0}, "secs": 17}
+{"epoch": 7, "loss": 1.937, "heldout_acc": {"steer": 0.54, "lean": 0.582, "gas": 0.799, "brake": 1.0}, "secs": 18}
+{"epoch": 8, "loss": 1.807, "heldout_acc": {"steer": 0.5, "lean": 0.58, "gas": 0.852, "brake": 1.0}, "secs": 19}
+{"epoch": 9, "loss": 2.19, "heldout_acc": {"steer": 0.489, "lean": 0.515, "gas": 0.806, "brake": 1.0}, "secs": 17}
+{"epoch": 10, "loss": 1.863, "heldout_acc": {"steer": 0.503, "lean": 0.51, "gas": 0.815, "brake": 1.0}, "secs": 18}
+{"exam": {"progress": 3, "lap": 0, "frames": 1493, "energy": 0.67}}
