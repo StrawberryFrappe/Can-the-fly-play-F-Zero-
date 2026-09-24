@@ -47,9 +47,16 @@ class FZero:
     ]
     LEAGUES = ("knight", "queen", "king")
 
+    # Practice mode, Mute City I, one rival (the default Blue Falcon), no Grand Prix rank rule:
+    # title -> PRACTICE -> car -> rival -> course select (Mute City I) -> START
+    practice_menu = [("wait", 240), ("DOWN", 6), ("wait", 20), ("START", 6), ("wait", 120), ("B", 6),
+                     ("wait", 60), ("B", 6), ("wait", 60), ("START", 6), ("wait", 100)]
+
     @classmethod
     def menu_for(cls, league: str = "knight") -> list:
         """Menu macro for a league: the league screen is up after the first B (car confirmed)."""
+        if league == "practice":
+            return list(cls.practice_menu)
         k = cls.LEAGUES.index(league)
         m = list(cls.menu)
         at = m.index(("B", 6)) + 2  # after the first B and its wait

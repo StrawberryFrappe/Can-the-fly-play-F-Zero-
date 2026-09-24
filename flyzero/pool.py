@@ -63,6 +63,21 @@ def _worker(conn, rom, eye, core, line):
                 pilot.reset()
             frame = game._press({})
             conn.send((look(frame), labelled(game.info)))
+        elif cmd == "step_pilot":  # DART data collection: the pilot drives, with random disturbances
+            _, noise, want_frame = msg
+            rng_ = getattr(pilot, "_rng", None) or np.random.default_rng()
+            pilot._rng = rng_
+            buttons = pilot.buttons(game.ram())
+            if getattr(pilot, "_dist", 0) > 0:
+                pilot._dist -= 1
+                buttons.update(pilot._dist_b)
+            elif rng_.random() < noise:          # start a disturbance: a random steer / lean for a bit
+                pilot._dist = int(rng_.integers(5, 30))
+                d = rng_.choice(["LEFT", "RIGHT"])
+                pilot._dist_b = {"LEFT": d == "LEFT", "RIGHT": d == "RIGHT",
+                                 "L": d == "LEFT" and rng_.random() < 0.4, "R": d == "RIGHT" and rng_.random() < 0.4}
+            frame = game.step(buttons)
+            conn.send((look(frame), labelled(game.info), None, None))
         elif cmd == "snapshot":  # (state, info, frame_no) to restore later
             conn.send((bytes(game.em.get_state()), dict(game.info), game.frame_no))
         elif cmd == "pilot_drive":  # the pilot drives from a state; snapshots along the way
@@ -129,6 +144,12 @@ class EmulatorPool:
         out = self._all([("step", b, frames) for b in buttons])
         rates = np.stack([o[0] for o in out])
         return (rates, [o[1] for o in out]) + (([o[2] for o in out], [o[3] for o in out]) if frames else ())
+
+    def step_pilot(self, noise: float, which=None):
+        """DART: the workers' pilots drive (plus random disturbances); for data collection only."""
+        which = list(range(self.n)) if which is None else list(which)
+        out = self._all([("step_pilot", noise, False)] * len(which), which)
+        return np.stack([o[0] for o in out]), [o[1] for o in out]
 
     def snapshot(self, which):
         return self._all([("snapshot",)] * len(list(which)), which)

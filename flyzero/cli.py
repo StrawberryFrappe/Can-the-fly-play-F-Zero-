@@ -308,7 +308,8 @@ def main(argv=None):
     ss = sub.add_parser("start-state", help="save the Mute City I start line (run the menus once)")
     ss.add_argument("--rom", required=True)
     ss.add_argument("--out", default="start.state")
-    ss.add_argument("--league", default="knight", choices=["knight", "queen", "king"])
+    ss.add_argument("--league", default="knight", choices=["knight", "queen", "king", "practice"],
+                    help="practice: Practice mode, Mute City I, one rival, no rank rule")
     ss.add_argument("--core", help="snes9x libretro core (.dll on Windows) instead of stable-retro")
 
     def _start_state(a):

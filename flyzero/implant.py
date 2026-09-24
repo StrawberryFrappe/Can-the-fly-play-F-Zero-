@@ -192,8 +192,9 @@ def run(a):
         f = ema * np.float32(1000.0 / fleet.window)
         return f if mu is None else (f - mu) / sd
 
-    def drive(frames, implant_on, collect, grid_only=False, record=False):
-        """All B slots drive; returns per-slot results (and recordings)."""
+    def drive(frames, implant_on, collect, grid_only=False, record=False, pilot_noise=None):
+        """All B slots drive; returns per-slot results (and recordings). ``pilot_noise``: DART data
+        collection, the pilot drives with disturbances while the fly's brain watches (implant off)."""
         nonlocal n, ema, seen
         fleet.brain.reset()
         fleet.motor.reset()
@@ -244,7 +245,10 @@ def run(a):
                 for k in np.flatnonzero(live):
                     masks[k].append(buttons_to_mask(buttons[k]))
                     dn[k].append(fleet.motor.rates[k].astype(np.float16))
-            rates, infos = fleet.pool.step(buttons)
+            if pilot_noise is not None:
+                rates, infos = fleet.pool.step_pilot(pilot_noise)
+            else:
+                rates, infos = fleet.pool.step(buttons)
             for k, inf in enumerate(infos):
                 if not live[k]:
                     continue
@@ -279,6 +283,30 @@ def run(a):
         net.eval()
         return float(loss.detach())
 
+    if a.eval:     # exams only: a trained implant, N solo races from --exam, finishes saved
+        r0 = Path(a.resume)
+        last = r0 / "implant_last.pt"
+        net.load_state_dict(torch.load(r0 / a.eval_weights if a.eval_weights else
+                                       (last if last.exists() else r0 / "implant.pt")))
+        net.eval()
+        nz = np.load(r0 / "normaliser.npz")
+        assert np.array_equal(nz["electrodes"], idx)
+        mu, sd = cp.asarray(nz["mu"]), cp.asarray(nz["sd"])
+        results = []
+        for k in range(0, a.eval, B):
+            for x in drive(a.exam_frames, True, False, grid_only=True, record=True):
+                results.append(x)
+                tag = "finish" if x["finished"] else "5laps" if x.get("laps5") else None
+                if tag:
+                    save_run(out / f"{tag}_{len(results)}.npz", exam_state, x["masks"], x["rates"], "augmented",
+                             progress=x["progress"], laps=x["lap"], frames=x["frames"], rank=x.get("rank"))
+            rec = {"attempts": len(results), "finished": sum(r["finished"] for r in results),
+                   "progress": [r["progress"] for r in results[-B:]], "ranks": [r.get("rank") for r in results[-B:]]}
+            print(json.dumps(rec), flush=True)
+            with open(out / "eval.jsonl", "a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        fleet.close()
+        return
     if a.resume:   # continue a run: its implant, normaliser and dataset
         r0 = Path(a.resume)
         last = r0 / "implant_last.pt"
@@ -347,8 +375,12 @@ def run(a):
         while seen < target:
             # --host-drives: new data only while the natural fly drives (implant off). With the
             # implant driving, DNs it clamps feed back into the electrodes, and later rounds
-            # learned to echo their own commands (exams fell from 155 to 67 segments)
-            drive(a.episode_frames, not a.host_drives, True)
+            # learned to echo their own commands (exams fell from 155 to 67 segments).
+            # --dart: a share of the data is collected with the pilot driving plus disturbances
+            if a.dart > 0 and rng.random() < a.dart:
+                drive(a.episode_frames, False, True, pilot_noise=a.dart_noise)
+            else:
+                drive(a.episode_frames, not a.host_drives, True)
     fleet.close()
 
 
@@ -372,6 +404,10 @@ def main(argv=None):
     ap.add_argument("--width", type=int, default=256, help="implant hidden units")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dart", type=float, default=0.0, help="share of data drives where the pilot drives (with noise)")
+    ap.add_argument("--dart-noise", type=float, default=0.02, help="per-frame chance of starting a disturbance")
+    ap.add_argument("--eval", type=int, default=0, help="with --resume: only run this many exam races")
+    ap.add_argument("--eval-weights", help="with --eval: implant file inside the --resume folder")
     ap.add_argument("--fresh-data", action="store_true", help="with --resume: keep the implant, start a new dataset")
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")
     ap.add_argument("--out", required=True)
