@@ -53,7 +53,9 @@ class FZero:
                      ("wait", 60), ("B", 6), ("wait", 60), ("START", 6), ("wait", 100)]
 
     CLASSES = ("beginner", "standard", "expert", "master")
-    SRAM_MASTER = 0x1FA   # battery-save byte: Master class unlocked (found by search; 0xFF = all leagues)
+    # Master class unlocked (0xFF: every league): work-RAM $7F49FA, the game's working copy of
+    # save-RAM byte 0x1FA (the save data is mirrored at $7F4800); found by a brute-force search
+    WRAM_MASTER = 0x149FA
 
     @classmethod
     def menu_for(cls, league: str = "knight") -> list:
@@ -153,16 +155,18 @@ class FZero:
         return frame
 
     def unlock_master(self):
-        """Set the save-RAM flag that the game sets after an Expert Grand Prix win, so MASTER shows
-        up on the class screen (the owner's request: race Master without beating Expert first)."""
-        if self.data is None:
-            raise RuntimeError("--class master needs the stable-retro backend")
+        """Set the flag that an Expert Grand Prix win sets, so MASTER shows up on the class screen
+        (the owner's request: race Master without beating Expert first). Call it on the car screen,
+        before the league/class screens open."""
+        if self.data is None:   # libretro frontend (Windows): write the live work RAM
+            self.em.poke_wram(self.WRAM_MASTER, 0xFF)
+            return
         state = bytearray(self.em.get_state())
-        sram = bytes(self.data.memory.blocks[0x700000])
-        off = bytes(state).find(sram[:256])
-        if off < 0:
-            raise RuntimeError("save RAM not found in the emulator state")
-        state[off + self.SRAM_MASTER] = 0xFF
+        ram = self.ram()
+        base = bytes(state).find(bytes(ram[0x100:0x200])) - 0x100   # work RAM inside the state
+        if base < 0 or bytes(state[base:base + 0x200]) != bytes(ram[:0x200]):
+            raise RuntimeError("work RAM not found in the emulator state")
+        state[base + self.WRAM_MASTER] = 0xFF
         self.em.set_state(bytes(state))
 
     def save_state(self, path: str | Path):

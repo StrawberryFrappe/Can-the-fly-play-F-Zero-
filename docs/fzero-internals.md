@@ -146,11 +146,11 @@ a segment change.
 * `flyzero/tune.py` → `Progress`: unwrapped track progress from `$0D00` (wrong-way driving counts
   negative). A good fitness signal for RL or evolution.
 
-## Save RAM (battery) and the class menu
+## Save data and the class menu
 
 | Address | Meaning | How found | Conf. |
 |---|---|---|---|
-| `$7001FA` | Master class unlocked (set to `0xFF`: MASTER appears on the class screen for every league) | brute force: each save-RAM byte set to `0xFF` on the car screen, then the class line checked after three DOWNs | ✅ (screen) |
+| `$7F49FA` (work RAM) | Master class unlocked (`0xFF`: MASTER appears on the class screen for every league). The game keeps a working copy of its save RAM at `$7F4800`; this is save byte `0x1FA`. Writing the battery RAM itself does nothing until the game reloads it | brute force (each byte set to `0xFF` on the car screen, class line checked after three DOWNs), then confirmed on both the stable-retro and the libretro frontend | ✅ (screen) |
 
 The class line cycles BEGINNER → STANDARD → EXPERT (→ MASTER when unlocked) with DOWN. The class
 list is built when the league/class screen opens, so a patch must happen before that (the car

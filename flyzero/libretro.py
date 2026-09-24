@@ -27,6 +27,7 @@ ENV_GET_VARIABLE_UPDATE = 17
 ENV_GET_SAVE_DIRECTORY = 31
 PIXEL_0RGB1555, PIXEL_XRGB8888, PIXEL_RGB565 = 0, 1, 2
 DEVICE_JOYPAD = 1
+MEMORY_SAVE_RAM = 0
 MEMORY_SYSTEM_RAM = 2
 
 ENV_CB = C.CFUNCTYPE(C.c_bool, C.c_uint, C.c_void_p)
@@ -183,6 +184,14 @@ class Libretro:
         buf = C.create_string_buffer(bytes(state), len(state))
         if not self.lib.retro_unserialize(buf, len(state)):
             raise RuntimeError("unserialize failed")
+
+    def poke_wram(self, offset: int, value: int):
+        """Write one byte of work RAM ($7E0000 + offset), live in the core."""
+        ptr = self.lib.retro_get_memory_data(MEMORY_SYSTEM_RAM)
+        n = self.lib.retro_get_memory_size(MEMORY_SYSTEM_RAM)
+        if not ptr or offset >= n:
+            raise RuntimeError("this core exposes no system RAM")
+        C.cast(ptr, C.POINTER(C.c_uint8))[offset] = value
 
     def wram(self) -> np.ndarray:
         ptr = self.lib.retro_get_memory_data(MEMORY_SYSTEM_RAM)
