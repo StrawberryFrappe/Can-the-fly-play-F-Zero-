@@ -96,6 +96,32 @@ class Clamp:
             self.fleet.brain.bias_ext[:, j] = self.base[g] + cp.asarray(self.u[:, g])[:, None]
 
 
+def save_dataset(out, X, Y, Ya, n, chunk=20000):
+    """Chunk by chunk into a memory-mapped file: a whole-array copy in RAM got the process
+    OOM-killed on a 7 GB laptop (300k x 2918 fp16 = 1.75 GB)."""
+    mm = np.lib.format.open_memmap(out / "dataset_X.npy", "w+", np.float16, (n, X.shape[1]))
+    for b in range(0, n, chunk):
+        e = min(n, b + chunk)
+        mm[b:e] = X[b:e].cpu().numpy()
+    mm.flush()
+    del mm
+    np.savez(out / "dataset_Y.npz", Y=Y[:n].cpu().numpy(), Ya=Ya[:n].cpu().numpy())
+
+
+def load_dataset(r0, X, Y, Ya, dev, chunk=20000) -> int:
+    import torch
+
+    mm = np.load(r0 / "dataset_X.npy", mmap_mode="r")
+    y = np.load(r0 / "dataset_Y.npz")
+    n = min(len(mm), X.shape[0])
+    for b in range(0, n, chunk):
+        e = min(n, b + chunk)
+        X[b:e] = torch.as_tensor(np.asarray(mm[b:e]), device=dev)
+    Y[:n] = torch.as_tensor(y["Y"][:n], device=dev)
+    Ya[:n] = torch.as_tensor(y["Ya"][:n], device=dev)
+    return n
+
+
 def build_net(n_in: int, width: int = 256):
     import torch.nn as nn
 
@@ -316,12 +342,16 @@ def run(a):
         assert np.array_equal(nz["electrodes"], idx)
         mu, sd = cp.asarray(nz["mu"]), cp.asarray(nz["sd"])
         np.savez(out / "normaliser.npz", mu=nz["mu"], sd=nz["sd"], electrodes=idx)
-        if (r0 / "dataset.pt").exists() and not a.fresh_data:
-            ds = torch.load(r0 / "dataset.pt")
-            n = len(ds["Y"])
-            X[:n], Y[:n] = ds["X"].to(dev), ds["Y"].to(dev)
-            if "Ya" in ds:
-                Ya[:n] = ds["Ya"].to(dev)
+        if (r0 / "dataset_X.npy").exists() and not a.fresh_data:
+            n = load_dataset(r0, X, Y, Ya, dev)
+        elif (r0 / "dataset.pt").exists() and not a.fresh_data:   # older runs
+            ds = torch.load(r0 / "dataset.pt", mmap=True)
+            n = min(len(ds["Y"]), cap)
+            for b in range(0, n, 20000):
+                e = min(n, b + 20000)
+                X[b:e], Y[b:e] = ds["X"][b:e].to(dev), ds["Y"][b:e].to(dev)
+                if "Ya" in ds:
+                    Ya[b:e] = ds["Ya"][b:e].to(dev)
             del ds
         else:   # no saved dataset: a fresh round (driven by the host fly with --host-drives)
             while n < a.round_frames:
@@ -368,7 +398,7 @@ def run(a):
                      progress=top["progress"], laps=top["lap"], frames=top["frames"])
             torch.save(net.state_dict(), out / "implant.pt")
         torch.save(net.state_dict(), out / "implant_last.pt")
-        torch.save({"X": X[:n].cpu(), "Y": Y[:n].cpu(), "Ya": Ya[:n].cpu()}, out / "dataset.pt")
+        save_dataset(out, X, Y, Ya, n)
         if r == a.rounds:
             break
         target = seen + a.round_frames
