@@ -18,7 +18,60 @@ GPU). Read this first, then `README.md` (the lab notebook) and `docs/fzero-inter
 * **Comparison:** a standard neural network (`flyzero baseline`) trained on the same human races
   and given the same exam, "fly vs AI".
 
-## Where things stand (end of the cloud session)
+## Where things stand (laptop session, 2026-09-23/24)
+
+### Mute City I is finished, by the augmented fly
+
+| Driver | Mute City I, Grand Prix, Knight League, Beginner |
+|---|---|
+| **augmented fly** (natural fly + implant) | **finishes top 3 in 4 of 16 races** (2nd, 2nd, 3rd, 3rd); first finish 3rd, 2'35"34 |
+| augmented fly, Practice mode (no rank rule) | finishes 11 of 16 races |
+| natural fly (its own synapses only) | best drive 3 laps; about 1 lap on average; never finished |
+| CNN, DAgger with the same pilot | best 157 segments (2.7 laps) |
+| CNN on the owner's races | 3 segments |
+| pilot (teacher, reads RAM) | 2nd, 2'20"61 |
+| owner (human) | 2'25" |
+
+A finish means top 3 at the final line: the last lap's SAFE rank is 3, and crossing lower ends in
+"YOU LOST". Replays (bit-exact from `start.state`) are in `runs/results/milestones/`; the
+results screen of the first finish is `GP_BEGINNER_FINISH_results_screen.png`.
+
+**The augmented fly is not the fly alone.** An implant (`flyzero/implant.py`) does the
+decoding:
+* **Read:** electrodes on 2,918 of the natural fly's neurons: the DNs' inputs, visual projection
+  neurons and the most steering-related L2 neurons, no descending neurons. No pixels, no RAM.
+* **Decide:** a small MLP trained by DAgger + DART from the pilot.
+* **Write:** a current clamp drives the fly's own descending neurons, giant-fiber pulses fire the
+  boost, and the same readout presses the buttons, tapped like the pilot's.
+
+**The natural fly** (`python -m flyzero.school dagger`) learns only in FlyWire synapses:
+* the motor DNs' inputs and one layer up, with a retrograde error through its own synapses;
+* intrinsic excitability of the DNs;
+* consolidated (slow) weights for exams.
+
+Its best checkpoint is `work/r3g/fly0_f800000.npz` (not committed, 20 MB). It plateaus at about
+1 lap; the SAFE rank needs a pilot-like pace.
+
+### What the owner's observations turned out to be (README 20)
+
+Blinking energy bar → POWER from RAM; barely leaning → pilot leans; side to side → teacher taps
+but the readout holds (hold vs tap); boost after the line (owner's tip) → boost labels on the
+straight in every lap.
+
+### Big Blue (next track), in progress
+
+* `bigblue.state`: the Big Blue grid, reached by replaying the first Mute City finish and pressing
+  through the results.
+* `runs/pilot/big_blue_line.npz`: racing line from the owner's GP recording, 84 segments per lap,
+  with pilot settings; the pilot wins Big Blue.
+* The augmented run `work/bb1` gets about 1.5 laps so far.
+
+### Recording flags for the owner
+
+`flyzero record --league knight|queen|king [--first-race]` (back-to-back first races),
+`--king-league`, `--queen-league`.
+
+## Where things stood at the end of the cloud session (history)
 
 ### Nothing finishes a lap yet
 
@@ -99,7 +152,24 @@ exam). Resume with practice only (below).
    `lessons` replays every race and skips any with checkpoint mismatches. All 10 races (about
    145 k frames) replayed with 0 mismatches in the cloud container.
 
-## Continuing
+## Continuing (GPU fleet, laptop)
+
+```
+# natural fly: DAgger with the pilot, deep plasticity, consolidation (see README 12-21)
+python -m flyzero.school dagger --init work/r3g/fly0_f800000.npz --batch 4 --etas 3e-4 --eta-deep 0.01 \
+    --eta-bias 5e-5 --consolidate 20000 --focus 3 --p-grid 0.3 --drives 8 --out work/n7
+# augmented fly (implant): continue a run, or --eval N to only race
+python -m flyzero.implant --host work/r3g/fly0_f800000.npz --batch 4 --l2-top 2000 --host-drives --taps \
+    --dart 0.5 --resume work/aug15 --out work/aug16
+python -m flyzero.implant ... --resume work/aug15_src --eval 16 --exam start.state --out work/eval
+# Big Blue: --line runs/pilot/big_blue_line.npz --exam bigblue.state
+# watch any saved race in 3D:   python -m flyzero.live --replay runs/results/milestones/<file>.npz
+```
+
+Two processes (4 slots each) fit a GTX 1650 + 7 GB RAM. Watch GPU memory: a second-layer natural
+run (1.8 GB) next to a large implant OOMs.
+
+## Continuing (the cloud-session commands, CPU)
 
 ```
 # the fly: practice from the taught weights (one process per learning rate; use as many as you have cores)
@@ -136,6 +206,17 @@ easily), but it's work, and the emulator steps once per frame anyway.
    (`--queen-league`) was recorded once, messy but real.
 
 ## Gotchas that cost time
+
+* **Replays need one empty frame after loading the state** (`live._start`), like
+  `EmulatorPool.load` does; otherwise they desync.
+* **`pkill -f` kills your own shell** (the command line matches). Kill by exact PID.
+* **Spawned workers re-import the main module:** no module-level CuPy/torch in scripts that spawn
+  emulator workers (320 MB per worker otherwise).
+* **High learning rates make training look good**: the plasticity steers online. Judge by frozen
+  (consolidated) weights.
+* **Teacher and student need the same hands** (hold vs tap).
+* **Implant data collected while the implant drives teaches it to read its own commands**
+  (causal confusion): collect with the host fly driving (`--host-drives`) or the pilot (`--dart`).
 
 * **One emulator per process** (stable-retro and the libretro frontend both). Use subprocesses.
 * **`$7E0CF3` is not the lap counter** (it's a flag). **`$7E0F53`** is.
