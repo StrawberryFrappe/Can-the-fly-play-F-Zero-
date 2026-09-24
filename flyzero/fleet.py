@@ -23,7 +23,7 @@ class Fleet:
     def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=None,
                  bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
                  deep: bool = False, taps: bool = False, steer_span: float = 150.0, lean_span: float = 70.0,
-                 steer_threshold: float = 10.0, lean_threshold: float = 10.0):
+                 steer_threshold: float = 10.0, lean_threshold: float = 10.0, pixels: bool = False):
         """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
         ``deep``: also make the synapses onto the DNs' presynaptic partners plastic.
         ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber).
@@ -63,7 +63,7 @@ class Fleet:
         self.eye_slots = self.brain.slots(self.eye.idx)
         ln = None if line is None else {k: v for k, v in np.load(line).items() if k not in ("source", "segments")}
         self.segments = int(np.load(line).get("segments", 59)) if line else 59   # per lap, for Progress
-        self.pool = EmulatorPool(rom, self.eye, batch, core=core, line=ln)
+        self.pool = EmulatorPool(rom, self.eye, batch, core=core, line=ln, pixels=pixels)
         self.window = 1000.0 / 60.0988
         self.extra_idx = np.zeros(0, np.int64)    # optional extra Poisson inputs (exploration, heat)
 

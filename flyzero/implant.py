@@ -185,12 +185,16 @@ def run(a):
     B = a.batch
     # --taps: the readout taps at a rate set by the DNs, exactly as the pilot's continuous steering
     # maps onto its duty cycle (160 Hz = full turn, 80 Hz = full lean in the lesson targets)
-    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True, taps=a.taps, steer_span=150.0, lean_span=70.0)
+    pix = a.inputs == "pixels"   # control: the same implant reading the screen instead of the fly's neurons
+    fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True, taps=a.taps, steer_span=150.0, lean_span=70.0,
+                  pixels=pix)
     host = BatchInstruct(fleet.brain, fleet.conn)
     host.load(np.load(a.host))                     # the natural fly, unchanged from here on
-    idx = electrodes(fleet.conn, l2_top=a.l2_top)
+    idx = np.array([-1]) if pix else electrodes(fleet.conn, l2_top=a.l2_top)
+    n_in = 3584 if pix else len(idx)
     d_idx = cp.asarray(idx)
-    print(f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
+    print(f"pixel control: {n_in} pixel inputs (the fly's neurons are not read)" if pix else
+          f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
     clamp = Clamp(fleet)
     from .batch import GROUPS as _G
 
@@ -200,15 +204,15 @@ def run(a):
     global BOOST_W
     BOOST_W = torch.tensor([1.0, 8.0], device="cuda")
     dev = torch.device("cuda")
-    net = build_net(len(idx), a.width).to(dev)
+    net = build_net(n_in, a.width).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-5)
     cap = a.cap
-    X = torch.zeros((cap, len(idx)), dtype=torch.float16, device=dev)   # aggregated dataset (GPU)
+    X = torch.zeros((cap, n_in), dtype=torch.float16, device=dev)   # aggregated dataset (GPU)
     Y = torch.zeros((cap, 4), dtype=torch.long, device=dev)
     Ya = torch.zeros((cap, 2), dtype=torch.float32, device=dev)    # the pilot's continuous steer, lean
     n = seen = 0
     mu = sd = None
-    ema = cp.zeros((B, len(idx)), cp.float32)
+    ema = cp.zeros((B, n_in), cp.float32)
     a_ema = np.float32(1 - np.exp(-fleet.window / 50.0))
     exam_state = Path(a.exam).read_bytes()
     starts = fleet.pool.pilot_drive(exam_state, 12000, 120)
@@ -240,7 +244,11 @@ def run(a):
         masks, dn = [[] for _ in range(B)], [[] for _ in range(B)]
         for i in range(frames):
             counts = fleet.think(rates, np.repeat(gf_hz[:, None], len(gf), 1))
-            ema += a_ema * (counts[:, d_idx].astype(cp.float32) - ema)
+            if pix:   # features() scales by 1000/window: undo it for pixels
+                ema = cp.asarray(np.stack([inf["pix"] for inf in infos]).astype(np.float32)) * \
+                    np.float32(fleet.window / 1000.0)
+            else:
+                ema += a_ema * (counts[:, d_idx].astype(cp.float32) - ema)
             on = implant_on & live
             if implant_on:
                 with torch.no_grad():
@@ -431,6 +439,8 @@ def main(argv=None):
     ap.add_argument("--exam-drives", type=int, default=16)
     ap.add_argument("--host-drives", action="store_true", help="collect new data with the implant off")
     ap.add_argument("--taps", action="store_true", help="continuous steer/lean + tap-rate readout (the pilot's hands)")
+    ap.add_argument("--inputs", choices=["neurons", "pixels"], default="neurons",
+                    help="pixels: control network reading the screen instead of the fly's neurons")
     ap.add_argument("--width", type=int, default=256, help="implant hidden units")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)

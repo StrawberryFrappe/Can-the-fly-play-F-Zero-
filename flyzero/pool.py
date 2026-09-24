@@ -15,7 +15,18 @@ import multiprocessing as mp
 import numpy as np
 
 
-def _worker(conn, rom, eye, core, line):
+def _pixels(frame, hist):
+    """A small picture for a brain-free control network: 28x32 colour + motion (difference of the
+    grey image to 4 frames earlier), 3,584 values."""
+    small = frame[::8, ::8].astype(np.float32) / 255.0
+    grey = small.mean(2)
+    hist.append(grey)
+    if len(hist) > 5:
+        hist.pop(0)
+    return np.concatenate([small.ravel(), (grey - hist[0]).ravel()]).astype(np.float16)
+
+
+def _worker(conn, rom, eye, core, line, pixels=False):
     from .games import FZero
     from .pilot import Pilot
 
@@ -35,10 +46,14 @@ def _worker(conn, rom, eye, core, line):
     def look(fr):
         return eye.see(np.ascontiguousarray(fr[:, ::-1]) if flip else fr)
 
+    hist = []
+
     def labelled(info):
         """Telemetry plus what the pilot would do here (it never presses anything for the fly)."""
         info = dict(info)
         info["racing"] = FZero.racing(frame)
+        if pixels:
+            info["pix"] = _pixels(frame, hist)
         if pilot is not None:
             info["pilot"] = pilot.intent(game.ram()).tolist()
         return info
@@ -53,6 +68,7 @@ def _worker(conn, rom, eye, core, line):
             eye.lp_hp = None
             if pilot is not None:
                 pilot.reset()
+            hist.clear()
             frame = game._press({})
             conn.send((look(frame), labelled(game.info)))
         elif cmd == "step":
@@ -69,6 +85,7 @@ def _worker(conn, rom, eye, core, line):
             eye.lp_hp = None
             if pilot is not None:
                 pilot.reset()
+            hist.clear()
             frame = game._press({})
             conn.send((look(frame), labelled(game.info)))
         elif cmd == "step_pilot":  # DART data collection: the pilot drives, with random disturbances
@@ -113,7 +130,8 @@ def _worker(conn, rom, eye, core, line):
 
 
 class EmulatorPool:
-    def __init__(self, rom: str, eye, n: int, core: str | None = None, line: dict | None = None):
+    def __init__(self, rom: str, eye, n: int, core: str | None = None, line: dict | None = None,
+                 pixels: bool = False):
         """``line``: racing line (``points``, ``speed``) for the pilot's labels (``info["pilot"]``)."""
         ctx = mp.get_context("spawn")
         self.n = n
@@ -121,7 +139,7 @@ class EmulatorPool:
         eye.lp_hp = None
         for _ in range(n):
             a, b = ctx.Pipe()
-            p = ctx.Process(target=_worker, args=(b, rom, eye, core, line), daemon=True)
+            p = ctx.Process(target=_worker, args=(b, rom, eye, core, line, pixels), daemon=True)
             p.start()
             self.pipes.append(a)
             self.procs.append(p)
