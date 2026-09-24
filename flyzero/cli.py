@@ -241,6 +241,8 @@ def main(argv=None):
                    help="back-to-back Mute City I: after each finish, straight back to the grid")
     r.add_argument("--league", choices=["knight", "queen", "king"], default=None,
                    help="which Grand Prix the menus pick (default knight)")
+    r.add_argument("--class", dest="klass", choices=["beginner", "standard", "expert"], default="beginner",
+                   help="difficulty class (default beginner)")
     r.add_argument("--queen-league", action="store_true", help="same as --league queen")
     r.add_argument("--king-league", action="store_true", help="same as --league king")
     r.add_argument("--first-race", action="store_true",
@@ -255,7 +257,8 @@ def main(argv=None):
         if not a.rom:
             sys.exit("--rom is required")
         record.play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio,
-                    a.league or ("queen" if a.queen_league else "king" if a.king_league else "knight"),
+                    (a.league or ("queen" if a.queen_league else "king" if a.king_league else "knight"))
+                    + ("" if a.klass == "beginner" else "/" + a.klass),
                     a.mute_city or a.first_race)
     r.set_defaults(func=_record)
 

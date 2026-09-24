@@ -52,15 +52,22 @@ class FZero:
     practice_menu = [("wait", 240), ("DOWN", 6), ("wait", 20), ("START", 6), ("wait", 120), ("B", 6),
                      ("wait", 60), ("B", 6), ("wait", 60), ("START", 6), ("wait", 100)]
 
+    CLASSES = ("beginner", "standard", "expert")
+
     @classmethod
     def menu_for(cls, league: str = "knight") -> list:
-        """Menu macro for a league: the league screen is up after the first B (car confirmed)."""
+        """Menu macro for a league, optionally with a class: "knight", "queen/expert", ... The league
+        screen is up after the first B (car confirmed), the class line after the second."""
         if league == "practice":
             return list(cls.practice_menu)
+        league, _, klass = league.partition("/")
         k = cls.LEAGUES.index(league)
+        c = cls.CLASSES.index(klass or "beginner")
         m = list(cls.menu)
         at = m.index(("B", 6)) + 2  # after the first B and its wait
-        return m[:at] + [step for _ in range(k) for step in (("DOWN", 6), ("wait", 14))] + m[at:]
+        m = m[:at] + [step for _ in range(k) for step in (("DOWN", 6), ("wait", 14))] + m[at:]
+        at2 = [i for i, st in enumerate(m) if st == ("B", 6)][1] + 2   # after the second B
+        return m[:at2] + [step for _ in range(c) for step in (("DOWN", 6), ("wait", 14))] + m[at2:]
 
     def __init__(self, rom: str | Path, state: str | Path | None = None, skip_menu: bool = False,
                  core: str | Path | None = None, league: str = "knight"):
