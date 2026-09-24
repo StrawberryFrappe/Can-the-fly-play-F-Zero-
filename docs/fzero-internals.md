@@ -145,3 +145,16 @@ a segment change.
   frame, lap, segment, speed, energy, stalled, done).
 * `flyzero/tune.py` → `Progress`: unwrapped track progress from `$0D00` (wrong-way driving counts
   negative). A good fitness signal for RL or evolution.
+
+## Save RAM (battery) and the class menu
+
+| Address | Meaning | How found | Conf. |
+|---|---|---|---|
+| `$7001FA` | Master class unlocked (set to `0xFF`: MASTER appears on the class screen for every league) | brute force: each save-RAM byte set to `0xFF` on the car screen, then the class line checked after three DOWNs | ✅ (screen) |
+
+The class line cycles BEGINNER → STANDARD → EXPERT (→ MASTER when unlocked) with DOWN. The class
+list is built when the league/class screen opens, so a patch must happen before that (the car
+screen works). `FZero.menu_for("knight/master")` does this (`--class master` in `flyzero record`).
+
+**F-Zero's race clock** adds 1.5 hundredths of a second per frame (0.9 × real time at 60.1 fps):
+race time = (frames since GO) × 0.015 s. GO is 102 frames after our `start.state`.

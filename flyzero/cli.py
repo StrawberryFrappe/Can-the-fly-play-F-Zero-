@@ -241,7 +241,7 @@ def main(argv=None):
                    help="back-to-back Mute City I: after each finish, straight back to the grid")
     r.add_argument("--league", choices=["knight", "queen", "king"], default=None,
                    help="which Grand Prix the menus pick (default knight)")
-    r.add_argument("--class", dest="klass", choices=["beginner", "standard", "expert"], default="beginner",
+    r.add_argument("--class", dest="klass", choices=["beginner", "standard", "expert", "master"], default="beginner",
                    help="difficulty class (default beginner)")
     r.add_argument("--queen-league", action="store_true", help="same as --league queen")
     r.add_argument("--king-league", action="store_true", help="same as --league king")

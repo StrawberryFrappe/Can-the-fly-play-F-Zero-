@@ -472,7 +472,7 @@ def main(argv=None):
     ap.add_argument("--mute-city", action="store_true", help="back-to-back Mute City I runs")
     ap.add_argument("--league", choices=["knight", "queen", "king"], default=None,
                    help="which Grand Prix the menus pick (default knight)")
-    ap.add_argument("--class", dest="klass", choices=["beginner", "standard", "expert"], default="beginner",
+    ap.add_argument("--class", dest="klass", choices=["beginner", "standard", "expert", "master"], default="beginner",
                    help="difficulty class (default beginner)")
     ap.add_argument("--queen-league", action="store_true", help="same as --league queen")
     ap.add_argument("--king-league", action="store_true", help="same as --league king")

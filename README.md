@@ -383,7 +383,8 @@ Handy flags:
   White Land I, White Land II).
 * `--league knight|queen|king` (or `--king-league`): pick any Grand Prix; with `--first-race`,
   back-to-back runs of that league's first race (Mute City I / II / III).
-* `--class beginner|standard|expert`: the difficulty class (default beginner), e.g.
+* `--class beginner|standard|expert|master`: the difficulty class (default beginner). `master`
+  is unlocked on the fly by setting the save-RAM flag an Expert win would set (`$7001FA`), e.g.
   `flyzero record --rom "F-Zero (USA).sfc" --league knight --class expert --out knight_expert.npz`.
 
 Game sound plays while you record (`--no-audio` to mute). To race the whole Grand Prix, just

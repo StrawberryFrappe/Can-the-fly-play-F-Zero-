@@ -52,7 +52,8 @@ class FZero:
     practice_menu = [("wait", 240), ("DOWN", 6), ("wait", 20), ("START", 6), ("wait", 120), ("B", 6),
                      ("wait", 60), ("B", 6), ("wait", 60), ("START", 6), ("wait", 100)]
 
-    CLASSES = ("beginner", "standard", "expert")
+    CLASSES = ("beginner", "standard", "expert", "master")
+    SRAM_MASTER = 0x1FA   # battery-save byte: Master class unlocked (found by search; 0xFF = all leagues)
 
     @classmethod
     def menu_for(cls, league: str = "knight") -> list:
@@ -67,7 +68,10 @@ class FZero:
         at = m.index(("B", 6)) + 2  # after the first B and its wait
         m = m[:at] + [step for _ in range(k) for step in (("DOWN", 6), ("wait", 14))] + m[at:]
         at2 = [i for i, st in enumerate(m) if st == ("B", 6)][1] + 2   # after the second B
-        return m[:at2] + [step for _ in range(c) for step in (("DOWN", 6), ("wait", 14))] + m[at2:]
+        m = m[:at2] + [step for _ in range(c) for step in (("DOWN", 6), ("wait", 14))] + m[at2:]
+        if klass == "master":   # unlock it on the car screen, before the league/class screens open
+            m.insert(m.index(("B", 6)), ("unlock_master", 0))
+        return m
 
     def __init__(self, rom: str | Path, state: str | Path | None = None, skip_menu: bool = False,
                  core: str | Path | None = None, league: str = "knight"):
@@ -139,11 +143,27 @@ class FZero:
         frame = self._press({})
         if not self.skip_menu:
             for what, n in self.menu:
+                if what == "unlock_master":
+                    self.unlock_master()
+                    continue
                 for _ in range(n):
                     frame = self._press({} if what == "wait" else {what: True})
                     if on_frame:
                         on_frame(frame)
         return frame
+
+    def unlock_master(self):
+        """Set the save-RAM flag that the game sets after an Expert Grand Prix win, so MASTER shows
+        up on the class screen (the owner's request: race Master without beating Expert first)."""
+        if self.data is None:
+            raise RuntimeError("--class master needs the stable-retro backend")
+        state = bytearray(self.em.get_state())
+        sram = bytes(self.data.memory.blocks[0x700000])
+        off = bytes(state).find(sram[:256])
+        if off < 0:
+            raise RuntimeError("save RAM not found in the emulator state")
+        state[off + self.SRAM_MASTER] = 0xFF
+        self.em.set_state(bytes(state))
 
     def save_state(self, path: str | Path):
         Path(path).write_bytes(bytes(self.em.get_state()))
