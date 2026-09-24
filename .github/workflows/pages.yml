@@ -1,0 +1,29 @@
+# Deploys site/ (the 3D page of a recorded race) to GitHub Pages on every push that changes it.
+# Enable it once in the repository: Settings -> Pages -> Source: GitHub Actions.
+# Rebuild the site locally with:  python -m flyzero.live --replay <race.npz> --site site
+name: pages
+on:
+  push:
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

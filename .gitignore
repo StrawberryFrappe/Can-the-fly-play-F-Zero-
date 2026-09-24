@@ -7,3 +7,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.blend1
+
+# the published page (python -m flyzero.live --replay ... --site site)
+!site/game.mp4

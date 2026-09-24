@@ -277,9 +277,17 @@ def main(argv=None):
     ap.add_argument("--save", help="folder to save each live race (inputs + DN rates) for replay")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--export", metavar="DIR", help="with --replay: write game.mp4 + trace.json and exit")
+    ap.add_argument("--site", metavar="DIR",
+                    help="with --replay: a complete static site (page + game.mp4 + trace.json), e.g. site/")
     a = ap.parse_args(argv)
-    if a.export:
-        return export(a.rom, a.replay, a.export)
+    if a.export or a.site:
+        export(a.rom, a.replay, a.export or a.site)
+        if a.site:
+            import shutil
+
+            shutil.copy(WEB / "index.html", Path(a.site) / "index.html")
+            print(f"site ready in {a.site}: serve it with any static host (GitHub Pages: see .github/workflows)")
+        return
 
     import websockets
 
