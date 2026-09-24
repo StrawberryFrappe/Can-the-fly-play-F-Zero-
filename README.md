@@ -381,6 +381,8 @@ Handy flags:
   put straight back on the grid.
 * `--queen-league`: the menus pick the Queen League (Mute City II, Port Town I, Red Canyon I,
   White Land I, White Land II).
+* `--league knight|queen|king` (or `--king-league`): pick any Grand Prix; with `--first-race`,
+  back-to-back runs of that league's first race (Mute City I / II / III).
 
 Game sound plays while you record (`--no-audio` to mute). To race the whole Grand Prix, just
 keep driving through the results screens. Every attempt is kept, and a new session never

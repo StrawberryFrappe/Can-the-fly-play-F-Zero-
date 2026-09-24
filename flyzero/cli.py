@@ -239,7 +239,13 @@ def main(argv=None):
     r.add_argument("--no-audio", action="store_true", help="don't play the game sound")
     r.add_argument("--mute-city", action="store_true",
                    help="back-to-back Mute City I: after each finish, straight back to the grid")
-    r.add_argument("--queen-league", action="store_true", help="race the Queen League Grand Prix")
+    r.add_argument("--league", choices=["knight", "queen", "king"], default=None,
+                   help="which Grand Prix the menus pick (default knight)")
+    r.add_argument("--queen-league", action="store_true", help="same as --league queen")
+    r.add_argument("--king-league", action="store_true", help="same as --league king")
+    r.add_argument("--first-race", action="store_true",
+                   help="back-to-back runs of the league's first race (knight: Mute City I, queen: "
+                        "Mute City II, king: Mute City III)")
     r.add_argument("--max-frames", type=int, default=0, help=argparse.SUPPRESS)
 
     def _record(a):
@@ -249,7 +255,8 @@ def main(argv=None):
         if not a.rom:
             sys.exit("--rom is required")
         record.play(a.rom, a.out, a.scale, a.max_frames, a.map, a.core, not a.no_audio,
-                    "queen" if a.queen_league else "knight", a.mute_city)
+                    a.league or ("queen" if a.queen_league else "king" if a.king_league else "knight"),
+                    a.mute_city or a.first_race)
     r.set_defaults(func=_record)
 
     rp = sub.add_parser("replay", help="check that a recording replays exactly here")
