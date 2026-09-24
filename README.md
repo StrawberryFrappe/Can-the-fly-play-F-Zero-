@@ -292,6 +292,25 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     distance of Mute City I, but it hasn't *finished* it in the game's sense yet. It's about
     15% too slow.
 
+23. **How much is the fly doing? A control with no fly.** The same implant and training recipe
+    (DAgger + DART, tap readout, same clamp and buttons), reading the **screen** (a 28×32 colour
+    frame + a motion channel, 3,584 values) instead of the fly's neurons. Both trained from
+    scratch for the same 5 rounds, then 16 Grand Prix races each:
+
+    | Implant reads | Mean segments | Full 5 laps | Top-3 finishes |
+    |---|---|---|---|
+    | the fly's neurons (2,918 electrodes) | 143 | 0 | 0 |
+    | the screen pixels | **204** | 4 | 0 |
+    | the fly's neurons, longest-trained implant (aug15) | 225 | 8 | 4 |
+
+    **With equal training, reading the pixels works better than reading the fly's brain.** In
+    the augmented fly the fly's brain is, at best, a somewhat lossy camera. The implant does
+    the driving, and the finishes came from training time, not from the fly. As a sensor the
+    fly's brain doesn't beat the raw image for this task.
+24. **The owner's Master races.** Six Mute City I races on Master (unlocked through `$7F49FA`),
+    placed 1st, 3rd, 1st, 2nd, 2nd, 1st; each replays bit-exact from power-on. Used as extra
+    lessons for the implant (the fly's brain watches the owner's inputs being replayed).
+
 ### Earlier findings
 
 * **Photoreceptors don't work as an input.** Driving all 10,582 photoreceptors activates about

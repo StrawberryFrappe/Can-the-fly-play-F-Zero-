@@ -1,0 +1,6 @@
+augmented fly: 2918 electrodes, host work/r3g/fly0_f800000.npz
+{"round": 0, "dataset": 40176, "loss": 0.145, "mins": 3.0, "exam": {"mean_progress": 12.8, "best": 26, "worst": 0, "laps_best": 0, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 1943, "each": [0, 4, 14, 26, 17, 5, 21, 15]}}
+{"round": 1, "dataset": 82206, "loss": 0.18, "mins": 22.7, "exam": {"mean_progress": 127.8, "best": 237, "worst": 29, "laps_best": 4, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 6094, "each": [178, 178, 237, 120, 179, 72, 29, 29]}}
+{"round": 2, "dataset": 124637, "loss": 0.283, "mins": 44.5, "exam": {"mean_progress": 203.1, "best": 295, "worst": 77, "laps_best": 5, "finished": 0, "laps5": 2, "n": 8, "mean_frames": 8207, "each": [81, 237, 231, 77, 237, 295, 295, 172]}}
+{"round": 3, "dataset": 165191, "loss": 0.279, "mins": 65.6, "exam": {"mean_progress": 147.4, "best": 238, "worst": 84, "laps_best": 4, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 6268, "each": [84, 114, 100, 214, 157, 98, 174, 238]}}
+{"round": 4, "dataset": 200000, "loss": 0.21, "mins": 86.3, "exam": {"mean_progress": 148.9, "best": 238, "worst": 20, "laps_best": 4, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 6823, "each": [238, 20, 22, 238, 119, 129, 188, 237]}}
