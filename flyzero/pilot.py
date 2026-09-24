@@ -122,7 +122,7 @@ class Pilot:
         gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
         # super jet like the owner: once a lap from lap 2, on the long straight, with energy to spare
         boost = 0.0
-        if self.p.boost and int(ram[0x0F53]) >= 1 and abs(err) < 0.1 and \
+        if self.p.boost and int(ram[0x0F53]) >= 1 and \
                 self.p.boost_x[0] < x < self.p.boost_x[1] and y < self.p.boost_y_max and \
                 (int(ram[0x00C9]) | int(ram[0x00CA]) << 8) > 1024:
             boost = 1.0

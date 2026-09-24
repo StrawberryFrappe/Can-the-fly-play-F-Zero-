@@ -166,6 +166,8 @@ def run(a):
     print(f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
     clamp = Clamp(fleet)
     ip = InstructParams()
+    global BOOST_W
+    BOOST_W = torch.tensor([1.0, 8.0], device="cuda")
     dev = torch.device("cuda")
     net = build_net(len(idx), a.width).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-5)
@@ -258,7 +260,8 @@ def run(a):
                 xb, yb = X[j].float(), Y[j]
                 outs = net(xb)
                 if a.taps:   # steer/lean regressed on the pilot's continuous command; gas, boost classes
-                    loss = 4.0 * F.mse_loss(outs[4], Ya[j]) + sum(F.cross_entropy(outs[k], yb[:, k]) for k in (2, 3))
+                    loss = 4.0 * F.mse_loss(outs[4], Ya[j]) + F.cross_entropy(outs[2], yb[:, 2]) + \
+                        F.cross_entropy(outs[3], yb[:, 3], weight=BOOST_W)   # boost labels are rare
                 else:
                     loss = sum(F.cross_entropy(outs[k], yb[:, k]) for k in range(4))
                 opt.zero_grad()
