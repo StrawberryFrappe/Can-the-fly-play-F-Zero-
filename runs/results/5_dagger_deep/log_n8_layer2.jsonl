@@ -1,0 +1,2 @@
+{"frames": 0, "exam": {"0": {"mean_progress": 89.9, "best": 178, "worst": -10, "laps_best": 3, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 4898, "each": [-10, 119, 38, 21, 178, 156, 157, 60]}}, "etas": [0.0003]}
+{"frames": 400000, "err_hz": 18.16, "restores": 75, "episodes": 234, "drift": [0.013299999758601189, 0.013299999758601189, 0.013299999758601189, 0.013299999758601189], "mins": 112.0, "exam": {"0": {"mean_progress": 25.4, "best": 39, "worst": -5, "laps_best": 0, "finished": 0, "laps5": 0, "n": 8, "mean_frames": 2908, "each": [38, 38, 39, 29, 36, 33, -5, -5]}}}
