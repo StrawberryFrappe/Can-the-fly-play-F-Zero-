@@ -28,7 +28,8 @@ from pathlib import Path
 
 import numpy as np
 
-BOOST_P = 0.1
+BOOST_P = 0.5
+GF_PULSE_HZ = 200.0
 CLAMP_GROUPS = ["a02L", "a02R", "g02L", "g02R", "a01L", "a01R", "gas", "brake", "gf"]
 
 
@@ -165,6 +166,10 @@ def run(a):
     d_idx = cp.asarray(idx)
     print(f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
     clamp = Clamp(fleet)
+    from .batch import GROUPS as _G
+
+    gf = fleet.conn.find(*_G["gf"])
+    fleet.extra_idx = gf
     ip = InstructParams()
     global BOOST_W
     BOOST_W = torch.tensor([1.0, 8.0], device="cuda")
@@ -203,10 +208,11 @@ def run(a):
 
         progs = [Progress() for _ in range(B)]
         live = np.ones(B, bool)
+        gf_hz = np.zeros(B)
         res = [None] * B
         masks, dn = [[] for _ in range(B)], [[] for _ in range(B)]
         for i in range(frames):
-            counts = fleet.think(rates)
+            counts = fleet.think(rates, np.repeat(gf_hz[:, None], len(gf), 1))
             ema += a_ema * (counts[:, d_idx].astype(cp.float32) - ema)
             on = implant_on & live
             if implant_on:
@@ -215,6 +221,9 @@ def run(a):
                     intent = intent_analog(net(x)) if a.taps else intent_from(net(x))
                 tgt = np.array([targets(v, ip) for v in intent], np.float32)
                 clamp.step(counts, tgt, on, fleet.window)
+                # the giant fiber: light pulses rather than current (the host's lessons taught it to
+                # stay quiet, and +20 mV doesn't make it fire): Poisson stimulation while boosting
+                gf_hz = np.where(on, intent[:, 4] * GF_PULSE_HZ, 0.0)
             buttons = fleet.motor.update(counts, fleet.window)
             if collect:
                 lab = np.array([classes(np.asarray(inf["pilot"])) for inf in infos])
