@@ -176,12 +176,12 @@ def dagger(a):
     starts = fleet.pool.pilot_drive(exam_state, 12000, a.snap_every)
     # hard-corner curriculum (--focus): start more drives a few segments before where flies crash
     start_seg = np.array([st[1]["segment"] for st in starts])
-    crashes = np.zeros(59)
+    crashes = np.zeros(fleet.segments)
 
     def pick_start():
         if a.focus <= 0 or crashes.sum() == 0:
             return rng.integers(len(starts))
-        ahead = (start_seg[:, None] + np.arange(1, 9)[None]) % 59
+        ahead = (start_seg[:, None] + np.arange(1, 9)[None]) % fleet.segments
         hard = crashes[ahead].sum(1)
         w = 1.0 + a.focus * hard / max(hard.mean(), 1e-9)
         return rng.choice(len(starts), p=w / w.sum())
@@ -250,7 +250,7 @@ def dagger(a):
             crashed = inf["done"] or inf["energy"] < 0.05
             if crashed:
                 crashes *= 0.995          # remember recent crash spots more
-                crashes[inf["segment"] % 59] += 1
+                crashes[inf["segment"] % fleet.segments] += 1
             if crashed and restores[k] < a.max_restores and len(snaps[k]) >= 2:
                 restores[k] += 1
                 stats["restores"] += 1

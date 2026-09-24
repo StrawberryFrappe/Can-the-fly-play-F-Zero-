@@ -61,7 +61,8 @@ class Fleet:
         self.bias_mv = bias_mv
         self.brain.set_bias(self.bias_idx, bias_mv)
         self.eye_slots = self.brain.slots(self.eye.idx)
-        ln = None if line is None else {k: v for k, v in np.load(line).items() if k in ("points", "speed")}
+        ln = None if line is None else {k: v for k, v in np.load(line).items() if k not in ("source", "segments")}
+        self.segments = int(np.load(line).get("segments", 59)) if line else 59   # per lap, for Progress
         self.pool = EmulatorPool(rom, self.eye, batch, core=core, line=ln)
         self.window = 1000.0 / 60.0988
         self.extra_idx = np.zeros(0, np.int64)    # optional extra Poisson inputs (exploration, heat)
@@ -91,7 +92,7 @@ class Fleet:
         self.brain.reset()
         self.motor.reset()
         rates, infos = self.pool.load([state] * self.B)
-        progs = [Progress() for _ in range(self.B)]
+        progs = [Progress(self.segments) for _ in range(self.B)]
         done = np.zeros(self.B, bool)
         res = [None] * self.B
         masks, dn = [[] for _ in range(self.B)], [[] for _ in range(self.B)]

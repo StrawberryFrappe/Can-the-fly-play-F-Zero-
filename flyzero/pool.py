@@ -20,7 +20,15 @@ def _worker(conn, rom, eye, core, line):
     from .pilot import Pilot
 
     game = FZero(rom, skip_menu=True, core=core)
-    pilot = Pilot(line["points"], line["speed"]) if line is not None else None
+    if line is not None:
+        from .pilot import PilotParams
+
+        # per-track pilot settings may ride along in the line file (boost_frac, kp, kd, look_base, ...)
+        keys = ("boost_frac", "kp", "kd", "look_base", "look_per_speed", "over_speed", "lean_start")
+        pilot = Pilot(line["points"], line["speed"],
+                      PilotParams(**{k: float(line[k]) for k in keys if k in line}))
+    else:
+        pilot = None
     flip = False
     frame = None
 

@@ -207,7 +207,7 @@ def run(a):
         from .tune import Progress
         from .record import buttons_to_mask
 
-        progs = [Progress() for _ in range(B)]
+        progs = [Progress(fleet.segments) for _ in range(B)]
         live = np.ones(B, bool)
         gf_hz = np.zeros(B)
         res = [None] * B

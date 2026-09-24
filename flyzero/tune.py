@@ -57,13 +57,15 @@ class Interface:
 class Progress:
     """Unwrapped track progress from the per-frame segment number."""
 
-    def __init__(self):
+    def __init__(self, segments: int = SEGMENTS):
+        self.segments = segments   # per lap: Mute City I 59, Big Blue 84
         self.last = None
         self.total = 0
 
     def update(self, seg: int, frame: int) -> int:
         if self.last is not None:
-            d = (seg - self.last + SEGMENTS // 2) % SEGMENTS - SEGMENTS // 2
+            n = self.segments
+            d = (seg - self.last + n // 2) % n - n // 2
             self.total += d
         self.last = seg
         return self.total

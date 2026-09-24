@@ -63,6 +63,7 @@ class PilotParams:
     boost: bool = True           # super jet on the bottom straight (x, y below), from lap 2
     boost_x: tuple = (2200.0, 4200.0)   # right after the line: a boost is earned each lap (owner's tip)
     boost_y_max: float = 600.0
+    boost_frac: float = 0.0      # >0: boost zone = this share of the racing line after the lap line (other tracks)
 
 
 def hold_style(x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
@@ -123,8 +124,11 @@ class Pilot:
         # super jet as soon as it can: on the straight right after the line (one is earned per lap;
         # with none in stock, A does nothing, so the label needn't know the lap - owner's tip)
         boost = 0.0
-        if self.p.boost and \
-                self.p.boost_x[0] < x < self.p.boost_x[1] and y < self.p.boost_y_max and \
+        if self.p.boost_frac > 0:   # any track: the first part of the lap after the line
+            zone = k < self.p.boost_frac * self.n
+        else:
+            zone = self.p.boost_x[0] < x < self.p.boost_x[1] and y < self.p.boost_y_max
+        if self.p.boost and zone and \
                 (int(ram[0x00C9]) | int(ram[0x00CA]) << 8) > 1024:
             boost = 1.0
         return np.array([steer, lean, gas, 0.0, boost], np.float32)
