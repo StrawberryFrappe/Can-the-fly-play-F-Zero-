@@ -410,13 +410,14 @@ def controller_test(seconds: float = 60.0):
     pyglet.app.run()
 
 
-def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None) -> list[dict]:
+def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None, on_ram=None) -> list[dict]:
     """Re-run every race in a recording here and check its sync checkpoints.
 
     Races with a saved start state start from it. Older recordings (without one) are replayed
     in order in one emulator, like the session that made them: each race starts where the
     previous one left off, followed by the menu macro, which is what the old restart did.
-    ``on_frame(race, frame, buttons, info)`` sees every frame."""
+    ``on_frame(race, frame, buttons, info)`` sees every frame; ``on_ram(race, ram, buttons, info)``
+    too, with the game's work RAM."""
     d = np.load(recording)
     lap_addr = int(d["check_lap_addr"]) if "check_lap_addr" in d else 0x0CF3  # older recordings
     league = str(d["league"]) if "league" in d else "knight"
@@ -445,6 +446,8 @@ def replay_all(rom: str, recording: str, on_frame=None, core: str | None = None)
             frame = game.step(buttons)
             if on_frame:
                 on_frame(race, frame, buttons, game.info)
+            if on_ram:
+                on_ram(race, game.ram(), buttons, game.info)
             if i in checks:
                 ram = game.ram()
                 if (int(ram[lap_addr]), int(ram[RAM_SEGMENT])) != checks[i]:

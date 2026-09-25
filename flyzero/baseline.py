@@ -195,7 +195,7 @@ def run_dagger(rom: str, exam_state: str, out: str, line: str = "runs/pilot/mute
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     Path(out).mkdir(parents=True, exist_ok=True)
     Lp = np.load(line)
-    pilot = Pilot(Lp["points"], Lp["speed"])
+    pilot = Pilot.from_line(Lp)
     game = FZero(rom, skip_menu=True)
     start = Path(exam_state).read_bytes()
     X = np.lib.format.open_memmap(Path(out) / "frames.npy", "w+", np.uint8, (cap, 56, 64, 6))

@@ -197,7 +197,7 @@ def run_pilot(hub: Hub, rom: str, state: str, line: str):
 
     hub.hello["driver"] = "pilot"
     L = np.load(line)
-    pilot = Pilot(L["points"], L["speed"])
+    pilot = Pilot.from_line(L)
     game = FZero(rom, state=state)
     hub.hello["audio_rate"] = game.audio_rate()
     game.collect_audio = True

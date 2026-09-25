@@ -30,7 +30,7 @@ GPU). Read this first, then `README.md` (the lab notebook) and `docs/fzero-inter
 | CNN, DAgger with the same pilot | best 157 segments (2.7 laps) |
 | CNN on the owner's races | 3 segments |
 | pilot (teacher, reads RAM) | 2nd, 2'20"61 |
-| owner (human) | 2'25" |
+| owner (human), 6 Beginner races | 1st every time, 2'10"-2'13" (laps ~1,690 frames) |
 
 A finish means top 3 at the final line: the last lap's SAFE rank is 3, and crossing lower ends in
 "YOU LOST". Replays (bit-exact from `start.state`) are in `runs/results/milestones/`; the

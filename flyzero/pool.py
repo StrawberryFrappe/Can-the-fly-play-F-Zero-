@@ -31,19 +31,16 @@ def _worker(conn, rom, eye, core, line, pixels=False):
     from .pilot import Pilot
 
     game = FZero(rom, skip_menu=True, core=core)
-    if line is not None:
-        from .pilot import PilotParams
-
-        # per-track pilot settings may ride along in the line file (boost_frac, kp, kd, look_base, ...)
-        keys = ("boost_frac", "kp", "kd", "look_base", "look_per_speed", "over_speed", "lean_start")
-        pilot = Pilot(line["points"], line["speed"],
-                      PilotParams(**{k: float(line[k]) for k in keys if k in line}))
+    if line is not None:   # per-track pilot settings ride along in the line file
+        pilot = Pilot.from_line(line)
     else:
         pilot = None
     flip = False
     frame = None
 
     def look(fr):
+        if eye is None:   # no fly (e.g. the CNN baseline): nothing to see for a brain
+            return np.zeros(0, np.float32)
         return eye.see(np.ascontiguousarray(fr[:, ::-1]) if flip else fr)
 
     hist = []
@@ -52,7 +49,9 @@ def _worker(conn, rom, eye, core, line, pixels=False):
         """Telemetry plus what the pilot would do here (it never presses anything for the fly)."""
         info = dict(info)
         info["racing"] = FZero.racing(frame)
-        if pixels:
+        if pixels == "view":   # the CNN baseline's picture: 56x64 colour
+            info["view"] = np.ascontiguousarray(frame[::4, ::4])
+        elif pixels:
             info["pix"] = _pixels(frame, hist)
         if pilot is not None:
             info["pilot"] = pilot.intent(game.ram()).tolist()
@@ -65,7 +64,8 @@ def _worker(conn, rom, eye, core, line, pixels=False):
             _, state, flip = msg
             game.em.set_state(state)
             game.frame_no, game.info, game._last_move, game._empty = 0, {}, 0, 0
-            eye.lp_hp = None
+            if eye is not None:
+                eye.lp_hp = None
             if pilot is not None:
                 pilot.reset()
             hist.clear()
@@ -82,7 +82,8 @@ def _worker(conn, rom, eye, core, line, pixels=False):
             game.em.set_state(state)
             game.info, game.frame_no = dict(info), frame_no
             game._last_move, game._empty = frame_no, 0
-            eye.lp_hp = None
+            if eye is not None:
+                eye.lp_hp = None
             if pilot is not None:
                 pilot.reset()
             hist.clear()
@@ -136,7 +137,8 @@ class EmulatorPool:
         ctx = mp.get_context("spawn")
         self.n = n
         self.pipes, self.procs = [], []
-        eye.lp_hp = None
+        if eye is not None:
+            eye.lp_hp = None
         for _ in range(n):
             a, b = ctx.Pipe()
             p = ctx.Process(target=_worker, args=(b, rom, eye, core, line, pixels), daemon=True)

@@ -107,8 +107,10 @@ behaviour. Offsets are from `$7E0000`.
 | `$7E1164`, `$7E1168`, `$7E0D08` | u8 | segment-like counters | track the same range as `$0D00`, slightly offset; likely other racers or sub-positions | ❓ |
 | `$7E0055` | u8 | changes 2 → 3 early in the race | probably a game-state/phase byte | ❓ |
 
-**Lap timing reference.** A human race (Blue Falcon, Beginner, no boosts to speak of) finished
-5 laps in 8,859 frames (2'27"), about 30 s per lap. A greedy search driver (always B; left/straight/right picked by
+**Lap timing reference.** The owner's Beginner races (Blue Falcon) take 8,680-8,850 frames from GO
+to the 5th lap line (race clock about 2'10"-2'13", 1st every time): laps 2-5 about 1,690 frames.
+(An earlier version of this note said 2'27" for 8,859 frames: that was the recording's length
+converted at 60 fps, menus included, not the race clock.) A greedy search driver (always B; left/straight/right picked by
 maximum speed 40 frames ahead) crossed the line at frame 2,154 after the start-line state. That
 was a first lap of about 0'30"8 on Beginner, running 3rd.
 

@@ -31,6 +31,10 @@ import numpy as np
 BOOST_P = 0.5
 GF_PULSE_HZ = 200.0
 CLAMP_GROUPS = ["a02L", "a02R", "g02L", "g02R", "a01L", "a01R", "gas", "brake", "gf"]
+# --budget: the implant writes into one control at a time (its DN groups), only while it thinks the
+# fly's own choice is wrong; the rest of the time the fly's own DNs decide, with no current injected
+CHANNELS = ("steer", "lean", "gas", "boost")
+CHANNEL_GROUPS = np.array([0, 0, 0, 0, 1, 1, 2, 2, 3])   # CLAMP_GROUPS -> channel ("gas" = speed: gas + brake)
 
 
 def electrodes(conn, decode_file: str | None = "work/decode_data.npz", l2_top: int = 0) -> np.ndarray:
@@ -83,20 +87,24 @@ class Clamp:
         self.u[np.atleast_1d(slots)] = 0
         self.rate[np.atleast_1d(slots)] = 0
 
-    def step(self, counts, targets: np.ndarray, active: np.ndarray, window_ms: float):
-        """``targets``: (B, groups) Hz; ``active``: slots whose implant is switched on."""
+    def step(self, counts, targets: np.ndarray, active: np.ndarray, window_ms: float, gate: np.ndarray | None = None):
+        """``targets``: (B, groups) Hz; ``active``: slots whose implant is switched on; ``gate``:
+        (B, groups) 0/1, groups the implant writes into now (None = all). A closed gate injects
+        nothing and holds its controller where it was."""
         import cupy as cp
 
         a = 1 - np.exp(-window_ms / 80.0)
         inst = np.stack([cp.asnumpy(counts[:, ix].mean(1)) for ix in self._idx], 1) * (1000.0 / window_ms)
         self.rate += a * (inst - self.rate)
-        self.u += self.gain * (targets - self.rate) * active[:, None]
+        g_on = active[:, None] * (1.0 if gate is None else gate)
+        self.u += self.gain * (targets - self.rate) * g_on
         self.u = np.clip(self.u, -self.limit, self.limit) * active[:, None]
+        applied = self.u * g_on
         for g, j in enumerate(self.slots):
-            self.fleet.brain.bias_ext[:, j] = self.base[g] + cp.asarray(self.u[:, g])[:, None]
+            self.fleet.brain.bias_ext[:, j] = self.base[g] + cp.asarray(applied[:, g])[:, None]
 
 
-def save_dataset(out, X, Y, Ya, n, chunk=20000):
+def save_dataset(out, X, Y, Ya, n, chunk=20000, Yw=None):
     """Chunk by chunk into a memory-mapped file: a whole-array copy in RAM got the process
     OOM-killed on a 7 GB laptop (300k x 2918 fp16 = 1.75 GB)."""
     mm = np.lib.format.open_memmap(out / "dataset_X.npy", "w+", np.float16, (n, X.shape[1]))
@@ -105,10 +113,11 @@ def save_dataset(out, X, Y, Ya, n, chunk=20000):
         mm[b:e] = X[b:e].cpu().numpy()
     mm.flush()
     del mm
-    np.savez(out / "dataset_Y.npz", Y=Y[:n].cpu().numpy(), Ya=Ya[:n].cpu().numpy())
+    extra = {} if Yw is None else {"Yw": Yw[:n].cpu().numpy()}
+    np.savez(out / "dataset_Y.npz", Y=Y[:n].cpu().numpy(), Ya=Ya[:n].cpu().numpy(), **extra)
 
 
-def load_dataset(r0, X, Y, Ya, dev, chunk=20000) -> int:
+def load_dataset(r0, X, Y, Ya, dev, chunk=20000, Yw=None) -> int:
     import torch
 
     mm = np.load(r0 / "dataset_X.npy", mmap_mode="r")
@@ -119,6 +128,8 @@ def load_dataset(r0, X, Y, Ya, dev, chunk=20000) -> int:
         X[b:e] = torch.as_tensor(np.asarray(mm[b:e]), device=dev)
     Y[:n] = torch.as_tensor(y["Y"][:n], device=dev)
     Ya[:n] = torch.as_tensor(y["Ya"][:n], device=dev)
+    if Yw is not None:
+        Yw[:n] = torch.as_tensor(y["Yw"][:n], device=dev) if "Yw" in y else -1
     return n
 
 
@@ -134,10 +145,11 @@ def build_net(n_in: int, width: int = 256):
             self.steer, self.lean, self.gas, self.boost = (nn.Linear(h, 3), nn.Linear(h, 3),
                                                            nn.Linear(h, 2), nn.Linear(h, 2))
             self.analog = nn.Linear(h, 2)   # --taps: continuous steer and lean, like the pilot's
+            self.need = nn.Linear(h, 4)     # --budget: "the fly's own choice is wrong" per channel
 
         def forward(self, x):
             h = self.body(x)
-            return self.steer(h), self.lean(h), self.gas(h), self.boost(h), self.analog(h).tanh()
+            return self.steer(h), self.lean(h), self.gas(h), self.boost(h), self.analog(h).tanh(), self.need(h)
 
     return Implant()
 
@@ -158,6 +170,17 @@ def intent_analog(outs) -> np.ndarray:
     b = (torch.softmax(outs[3], 1)[:, 1] > BOOST_P).cpu().numpy()
     a = outs[4].cpu().numpy()
     return np.stack([a[:, 0], a[:, 1], g.astype(float), np.zeros(len(g)), b.astype(float)], 1)
+
+
+def load_implant(net, path):
+    """Implants from before --budget have no gate head: it starts untrained (and is trained on
+    the fly-alone frames of the new data)."""
+    import torch
+
+    missing, unexpected = net.load_state_dict(torch.load(path, weights_only=True), strict=False)
+    assert not unexpected, unexpected
+    if missing:
+        print(f"{path}: new heads start untrained: {missing}", flush=True)
 
 
 def intent_from(outs) -> np.ndarray:
@@ -210,7 +233,15 @@ def run(a):
     X = torch.zeros((cap, n_in), dtype=torch.float16, device=dev)   # aggregated dataset (GPU)
     Y = torch.zeros((cap, 4), dtype=torch.long, device=dev)
     Ya = torch.zeros((cap, 2), dtype=torch.float32, device=dev)    # the pilot's continuous steer, lean
+    # --budget: was the fly's own choice wrong (per channel)? Only known where the fly acted alone (-1 elsewhere)
+    Yw = torch.full((cap, 4), -1, dtype=torch.int8, device=dev)
     n = seen = 0
+    budget = float(a.budget)
+    theta = np.full(4, 0.5)          # gate thresholds, adapted online so the implant stays within budget
+    for src in (a.resume,):          # continue from the thresholds a run converged to
+        if src and budget < 1.0 and (Path(src) / "gate.json").exists():
+            theta[:] = json.loads((Path(src) / "gate.json").read_text())["theta"]
+    a_own = np.float32(1 - np.exp(-1 / 8.0))   # the fly's own recent buttons, ~8 frames
     mu = sd = None
     ema = cp.zeros((B, n_in), cp.float32)
     a_ema = np.float32(1 - np.exp(-fleet.window / 50.0))
@@ -241,6 +272,10 @@ def run(a):
         live = np.ones(B, bool)
         gf_hz = np.zeros(B)
         res = [None] * B
+        own = np.zeros((B, 4), np.float32)          # the fly's own steer, lean, gas, boost (smoothed)
+        share = np.zeros((B, 4))                    # frames each channel was written by the implant
+        racing_frames = np.zeros(B)
+        gate_ch = np.ones((B, 4))
         masks, dn = [[] for _ in range(B)], [[] for _ in range(B)]
         for i in range(frames):
             counts = fleet.think(rates, np.repeat(gf_hz[:, None], len(gf), 1))
@@ -250,20 +285,44 @@ def run(a):
             else:
                 ema += a_ema * (counts[:, d_idx].astype(cp.float32) - ema)
             on = implant_on & live
+            racing = np.array([inf.get("racing", False) for inf in infos])
             if implant_on:
                 with torch.no_grad():
                     x = torch.as_tensor(features(), device=dev)
-                    intent = intent_analog(net(x)) if a.taps else intent_from(net(x))
+                    outs = net(x)
+                    intent = intent_analog(outs) if a.taps else intent_from(outs)
+                    p_need = torch.sigmoid(outs[5]).cpu().numpy()
                 tgt = np.array([targets(v, ip) for v in intent], np.float32)
-                clamp.step(counts, tgt, on, fleet.window)
+                if budget < 1.0:
+                    # write only where the fly is predicted wrong, and within budget: each channel's
+                    # threshold rises while the implant is over its share and relaxes (never below
+                    # 0.5, "more likely wrong than right") while under it
+                    gate_ch = (p_need > theta).astype(np.float64)
+                    cnt = on & racing
+                    if cnt.any():
+                        theta[:] = np.clip(theta + a.budget_eta * (gate_ch[cnt].mean(0) - budget), 0.5, 0.999)
+                else:
+                    gate_ch = np.ones((B, 4))
+                share += gate_ch * (on & racing)[:, None]
+                racing_frames += on & racing
+                clamp.step(counts, tgt, on, fleet.window, gate_ch[:, CHANNEL_GROUPS])
                 # the giant fiber: light pulses rather than current (the host's lessons taught it to
                 # stay quiet, and +20 mV doesn't make it fire): Poisson stimulation while boosting
-                gf_hz = np.where(on, intent[:, 4] * GF_PULSE_HZ, 0.0)
+                gf_hz = np.where(on & (gate_ch[:, 3] > 0), intent[:, 4] * GF_PULSE_HZ, 0.0)
             buttons = fleet.motor.update(counts, fleet.window)
+            act = np.array([[b.get("RIGHT", False) - b.get("LEFT", False), b.get("R", False) - b.get("L", False),
+                             b.get("B", False), b.get("A", False)] for b in buttons], np.float32)
+            own += a_own * (act - own)
             if collect:
                 lab = np.array([classes(np.asarray(inf["pilot"])) for inf in infos])
                 analog = np.array([np.asarray(inf["pilot"])[:2] for inf in infos], np.float32)
-                keep = np.flatnonzero(live & np.array([inf.get("racing", False) for inf in infos]))
+                if implant_on:   # the fly didn't choose alone: unknown whether its own choice was right
+                    wrong = np.full((B, 4), -1, np.int8)
+                else:
+                    pl = np.array([np.asarray(inf["pilot"]) for inf in infos], np.float32)
+                    want = np.stack([np.clip(pl[:, 0], -1, 1), np.clip(pl[:, 1], -1, 1), pl[:, 2], pl[:, 4]], 1)
+                    wrong = (np.abs(own - want) > 0.5).astype(np.int8)
+                keep = np.flatnonzero(live & racing)
                 if len(keep):
                     # append while there is room, then replace random old samples (the aggregate
                     # keeps following the implant's own, improving driving)
@@ -273,6 +332,7 @@ def run(a):
                     X[w_t] = torch.as_tensor(features()[keep], device=dev).half()
                     Y[w_t] = torch.as_tensor(lab[keep], device=dev)
                     Ya[w_t] = torch.as_tensor(analog[keep], device=dev)
+                    Yw[w_t] = torch.as_tensor(wrong[keep], device=dev)
                     n += free
                     seen += len(keep)
             if record:
@@ -292,11 +352,62 @@ def run(a):
                     res[k] = {"progress": progs[k].total, "lap": inf["lap"], "frames": i + 1,
                               "finished": bool(inf.get("finished")), "laps5": inf["lap"] >= 5,
                               "rank": inf.get("rank")}
+                    if implant_on:   # share of racing frames each channel was written by the implant
+                        res[k]["implant_share"] = [round(float(v), 3) for v in share[k] / max(racing_frames[k], 1)]
                     if record:
                         res[k]["masks"], res[k]["rates"] = np.array(masks[k]), np.array(dn[k])
             if not live.any():
                 break
         return res
+
+    def add_human(path):
+        """The owner's races as lessons: the emulators replay the owner's exact inputs while the
+        fly's brain watches (implant and clamp off); each racing frame is a sample labelled with
+        the owner's smoothed steering / lean (instruct.intent) and gas / boost buttons."""
+        nonlocal n, ema   # not ``seen``: rounds are paced by new DAgger frames only
+        from .instruct import intent
+        from .motor import BUTTONS
+        from .record import mask_to_buttons
+
+        L = np.load(path)
+        lessons = [(L[f"l{i}_state"].tobytes(), L[f"l{i}_masks"], L[f"l{i}_racing"]) for i in range(int(L["n"]))]
+        added = 0
+        for start in range(0, len(lessons), B):
+            batch = [lessons[(start + k) % len(lessons)] for k in range(B)]
+            fleet.brain.reset()
+            fleet.motor.reset()
+            clamp.reset(np.arange(B))
+            ema = cp.zeros_like(ema)
+            rates, infos = fleet.pool.load([b[0] for b in batch])
+            smooth = [intent(b[1], BUTTONS, 15.0) for b in batch]
+            T = max(len(b[1]) for b in batch)
+            iB, iA = BUTTONS.index("B"), BUTTONS.index("A")
+            for t in range(T):
+                counts = fleet.think(rates)
+                if pix:
+                    ema = cp.asarray(np.stack([inf["pix"] for inf in infos]).astype(np.float32)) * \
+                        np.float32(fleet.window / 1000.0)
+                else:
+                    ema += a_ema * (counts[:, d_idx].astype(cp.float32) - ema)
+                fleet.motor.update(counts, fleet.window)
+                keep = [k for k in range(B) if t < len(batch[k][1]) and batch[k][2][t] and (start + k) < len(lessons)]
+                if keep:
+                    lab = np.array([[1 if smooth[k][t][0] < -0.5 else 2 if smooth[k][t][0] > 0.5 else 0,
+                                     1 if smooth[k][t][1] < -0.5 else 2 if smooth[k][t][1] > 0.5 else 0,
+                                     int(batch[k][1][t][iB]), int(batch[k][1][t][iA])] for k in keep])
+                    analog = np.array([smooth[k][t][:2] for k in keep], np.float32)
+                    free = min(len(keep), cap - n)
+                    where = np.r_[np.arange(n, n + free), rng.integers(0, cap, len(keep) - free)].astype(np.int64)
+                    w_t = torch.as_tensor(where, device=dev)
+                    X[w_t] = torch.as_tensor(features()[keep], device=dev).half()
+                    Y[w_t] = torch.as_tensor(lab, device=dev)
+                    Ya[w_t] = torch.as_tensor(analog, device=dev)
+                    Yw[w_t] = -1
+                    n += free
+                    added += len(keep)
+                buttons = [mask_to_buttons(batch[k][1][min(t, len(batch[k][1]) - 1)]) for k in range(B)]
+                rates, infos = fleet.pool.step(buttons)
+        print(f"human lessons: {added} samples from {len(lessons)} races", flush=True)
 
     def train(epochs):
         net.train()
@@ -311,6 +422,10 @@ def run(a):
                         F.cross_entropy(outs[3], yb[:, 3], weight=BOOST_W)   # boost labels are rare
                 else:
                     loss = sum(F.cross_entropy(outs[k], yb[:, k]) for k in range(4))
+                w = Yw[j]
+                known = w >= 0
+                if known.any():   # the gate: where would the fly's own choice be wrong?
+                    loss = loss + F.binary_cross_entropy_with_logits(outs[5][known], w[known].float())
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
@@ -320,8 +435,7 @@ def run(a):
     if a.eval:     # exams only: a trained implant, N solo races from --exam, finishes saved
         r0 = Path(a.resume)
         last = r0 / "implant_last.pt"
-        net.load_state_dict(torch.load(r0 / a.eval_weights if a.eval_weights else
-                                       (last if last.exists() else r0 / "implant.pt")))
+        load_implant(net, r0 / a.eval_weights if a.eval_weights else (last if last.exists() else r0 / "implant.pt"))
         net.eval()
         nz = np.load(r0 / "normaliser.npz")
         assert np.array_equal(nz["electrodes"], idx)
@@ -335,7 +449,8 @@ def run(a):
                     save_run(out / f"{tag}_{len(results)}.npz", exam_state, x["masks"], x["rates"], "augmented",
                              progress=x["progress"], laps=x["lap"], frames=x["frames"], rank=x.get("rank"))
             rec = {"attempts": len(results), "finished": sum(r["finished"] for r in results),
-                   "progress": [r["progress"] for r in results[-B:]], "ranks": [r.get("rank") for r in results[-B:]]}
+                   "progress": [r["progress"] for r in results[-B:]], "ranks": [r.get("rank") for r in results[-B:]],
+                   "implant_share": [r.get("implant_share") for r in results[-B:]], "theta": theta.round(3).tolist()}
             print(json.dumps(rec), flush=True)
             with open(out / "eval.jsonl", "a") as fh:
                 fh.write(json.dumps(rec) + "\n")
@@ -344,14 +459,14 @@ def run(a):
     if a.resume:   # continue a run: its implant, normaliser and dataset
         r0 = Path(a.resume)
         last = r0 / "implant_last.pt"
-        net.load_state_dict(torch.load(last if last.exists() else r0 / "implant.pt"))
+        load_implant(net, last if last.exists() else r0 / "implant.pt")
         net.eval()
         nz = np.load(r0 / "normaliser.npz")
         assert np.array_equal(nz["electrodes"], idx)
         mu, sd = cp.asarray(nz["mu"]), cp.asarray(nz["sd"])
         np.savez(out / "normaliser.npz", mu=nz["mu"], sd=nz["sd"], electrodes=idx)
         if (r0 / "dataset_X.npy").exists() and not a.fresh_data:
-            n = load_dataset(r0, X, Y, Ya, dev)
+            n = load_dataset(r0, X, Y, Ya, dev, Yw=Yw)
         elif (r0 / "dataset.pt").exists() and not a.fresh_data:   # older runs
             ds = torch.load(r0 / "dataset.pt", mmap=True)
             n = min(len(ds["Y"]), cap)
@@ -384,6 +499,8 @@ def run(a):
         np.savez(out / "normaliser.npz", mu=cp.asnumpy(mu), sd=cp.asnumpy(sd), electrodes=idx)
     t = time.time()
     best = -1e9
+    if a.human:
+        add_human(a.human)
     for r in range(a.rounds + 1):
         loss = train(a.epochs)
         exam = []
@@ -391,7 +508,9 @@ def run(a):
             exam += drive(a.exam_frames, True, False, grid_only=True, record=True)
         top = max(exam, key=lambda x: (x["progress"], -x["frames"]))
         rec = {"round": r, "dataset": n, "loss": round(loss, 3), "mins": round((time.time() - t) / 60, 1),
-               "exam": {**summarize(exam), "each": [x["progress"] for x in exam]}}
+               "exam": {**summarize(exam), "each": [x["progress"] for x in exam]},
+               "implant_share": np.mean([x["implant_share"] for x in exam], 0).round(3).tolist(),
+               "gate_labels": int((Yw[:n, 0] >= 0).sum()), "theta": theta.round(3).tolist()}
         print(json.dumps(rec), flush=True)
         with open(out / "log.jsonl", "a") as fh:
             fh.write(json.dumps(rec) + "\n")
@@ -406,9 +525,12 @@ def run(a):
                      progress=top["progress"], laps=top["lap"], frames=top["frames"])
             torch.save(net.state_dict(), out / "implant.pt")
         torch.save(net.state_dict(), out / "implant_last.pt")
-        save_dataset(out, X, Y, Ya, n)
+        (out / "gate.json").write_text(json.dumps({"budget": budget, "theta": theta.tolist()}))
+        save_dataset(out, X, Y, Ya, n, Yw=Yw)
         if r == a.rounds:
             break
+        if a.human and a.human_every and (r + 1) % a.human_every == 0:
+            add_human(a.human)   # again, so the reservoir keeps some of the owner's driving
         target = seen + a.round_frames
         while seen < target:
             # --host-drives: new data only while the natural fly drives (implant off). With the
@@ -444,12 +566,18 @@ def main(argv=None):
     ap.add_argument("--width", type=int, default=256, help="implant hidden units")
     ap.add_argument("--l2-top", type=int, default=0, help="extra electrodes on the most steering-related L2 neurons")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--human", help="lessons file (flyzero lessons) of the owner's races to learn from too")
+    ap.add_argument("--human-every", type=int, default=3, help="re-add the human races every N rounds")
     ap.add_argument("--dart", type=float, default=0.0, help="share of data drives where the pilot drives (with noise)")
     ap.add_argument("--dart-noise", type=float, default=0.02, help="per-frame chance of starting a disturbance")
     ap.add_argument("--eval", type=int, default=0, help="with --resume: only run this many exam races")
     ap.add_argument("--eval-weights", help="with --eval: implant file inside the --resume folder")
     ap.add_argument("--fresh-data", action="store_true", help="with --resume: keep the implant, start a new dataset")
     ap.add_argument("--resume", help="an earlier run's folder: continue with its implant and dataset")
+    ap.add_argument("--budget", type=float, default=1.0,
+                    help="most the implant may write: share of racing frames per control (steer, lean, gas, "
+                         "boost); the fly's own DNs decide the rest. 1 = always (the earlier augmented flies)")
+    ap.add_argument("--budget-eta", type=float, default=0.002, help="gate threshold adaptation per frame")
     ap.add_argument("--out", required=True)
     run(ap.parse_args(argv))
 

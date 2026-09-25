@@ -64,6 +64,21 @@ class PilotParams:
     boost_x: tuple = (2200.0, 4200.0)   # right after the line: a boost is earned each lap (owner's tip)
     boost_y_max: float = 600.0
     boost_frac: float = 0.0      # >0: boost zone = this share of the racing line after the lap line (other tracks)
+    # style "owner": the owner's technique (measured on their races). Small corrections with
+    # lean taps only (they turn the car gently and cost no speed; D-pad taps do cost speed),
+    # the D-pad only for real corners, and in the sharpest ones full D-pad + lean with the gas
+    # pulsed (the tightest turn the car has). "pursuit": the original D-pad-first pilot.
+    style: str = "pursuit"
+    lean_gain: float = 1.0       # owner: lean tap duty per unit of turn command
+    steer_thr: float = 0.3       # owner: D-pad from this turn command on
+    steer_gain: float = 1.5      # owner: D-pad duty per unit beyond steer_thr
+    lean_full: float = 0.8       # owner: full lean from this command on
+    gas_corner: float = 0.6      # owner: lowest gas duty, in the sharpest corners
+    gas_thr: float = 1.2         # owner: gas pulsing from this command on
+
+
+LINE_KEYS = ("boost_frac", "kp", "kd", "look_base", "look_per_speed", "over_speed", "lean_start", "lean_gain",
+             "steer_thr", "steer_gain", "lean_full", "gas_corner", "gas_thr")
 
 
 def hold_style(x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
@@ -82,15 +97,29 @@ class Pilot:
 
     def __init__(self, points: np.ndarray, speed: np.ndarray, params: PilotParams | None = None):
         self.p = params or PilotParams()
+        assert self.p.style in ("pursuit", "owner"), self.p.style
         self.pts, self.speed = points, speed
         self.n = len(points)
         self.spacing = float(np.median(np.hypot(*np.diff(points, axis=0).T)))
         self.reset()
 
+    @classmethod
+    def from_line(cls, line) -> "Pilot":
+        """Pilot for a line file; per-track settings (and the style) ride along in it. Style
+        "clone": the owner clone (``teacher.OwnerClone``), same interface."""
+        if "style" in line and str(line["style"]) == "clone":
+            from .teacher import OwnerClone
+
+            return OwnerClone.from_line(line)
+        kw = {k: float(line[k]) for k in LINE_KEYS if k in line}
+        if "style" in line:
+            kw["style"] = str(line["style"])
+        return cls(line["points"], line["speed"], PilotParams(**kw))
+
     def reset(self):
         self.i = None
         self.last_h = None
-        self.acc = np.zeros(2)   # sigma-delta accumulators: steer, lean
+        self.acc = np.zeros(3)   # sigma-delta accumulators: steer, lean, gas release
 
     def _nearest(self, x, y):
         if self.i is None:
@@ -117,10 +146,16 @@ class Pilot:
         u = self.p.kp * err - self.p.kd * rate
         if v < self.p.min_speed:   # standing (the READY countdown): steering does nothing, so teach none
             u = 0.0
-        steer = float(np.clip(u, -1, 1))
-        # lean into sharp turns, like the owner (who leans on ~28% of frames)
-        lean = float(np.sign(u) * np.clip((abs(u) - self.p.lean_start) / max(1.0 - self.p.lean_start, 1e-3), 0, 1))
-        gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
+        if self.p.style == "owner":
+            a, sg = abs(u), float(np.sign(u))
+            lean = sg * min(1.0, a * self.p.lean_gain) if a < self.p.lean_full else sg
+            steer = sg * min(1.0, max(a - self.p.steer_thr, 0.0) * self.p.steer_gain)
+            gas = 1.0 if a < self.p.gas_thr else max(self.p.gas_corner, 1.0 - (a - self.p.gas_thr))
+        else:
+            steer = float(np.clip(u, -1, 1))
+            # lean into sharp turns, like the owner (who leans on ~28% of frames)
+            lean = float(np.sign(u) * np.clip((abs(u) - self.p.lean_start) / max(1.0 - self.p.lean_start, 1e-3), 0, 1))
+            gas = 0.0 if v > self.p.over_speed * max(self.speed[k], 400) else 1.0
         # super jet as soon as it can: on the straight right after the line (one is earned per lap;
         # with none in stock, A does nothing, so the label needn't know the lap - owner's tip)
         boost = 0.0
@@ -136,10 +171,10 @@ class Pilot:
     def buttons(self, ram, x: np.ndarray | None = None) -> dict:
         s, lean, gas, brake, boost = self.intent(ram) if x is None else x
         taps = []
-        for j, u in enumerate((s, lean)):
+        for j, u in enumerate((s, lean, gas - 1.0)):   # gas: a duty cycle too (1 = held)
             self.acc[j] += u
             t = 1 if self.acc[j] >= 0.5 else -1 if self.acc[j] <= -0.5 else 0
             self.acc[j] -= t
             taps.append(t)
-        return {"B": gas > 0.5, "LEFT": taps[0] < 0, "RIGHT": taps[0] > 0, "L": taps[1] < 0,
+        return {"B": taps[2] >= 0, "LEFT": taps[0] < 0, "RIGHT": taps[0] > 0, "L": taps[1] < 0,
                 "R": taps[1] > 0, "Y": brake > 0.5, "A": boost > 0.5}

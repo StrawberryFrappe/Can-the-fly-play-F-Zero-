@@ -174,8 +174,8 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     drive at ~220 game frames/s in total (the CPU did 25 per core).
 13. **A pilot to learn from** (`flyzero/pilot.py`). The car's position and heading are in RAM
     (`$0B70`, `$0B90`, `$0BE0`, see the internals doc). A scripted pilot follows the owner's
-    fastest lap and **finishes all 5 laps** (2'46" from our start line; the owner's best is
-    2'25"). **It is not the fly and never drives the fly's car.** It only says what it would do
+    fastest lap and **finishes all 5 laps** (2'46" from our start line; the owner's Beginner races take
+    2'10"-2'13" and win, see step 25). **It is not the fly and never drives the fly's car.** It only says what it would do
     from wherever the fly is. That's the DAgger instructor the owner's races couldn't be: human
     races only show what to do where a human was.
 14. **Where the steering information is.** The pilot drove and the taught fly watched. Its
@@ -288,7 +288,7 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
 
     **In its best exam, 2 of 8 drives completed all 5 laps.** But they crossed the line 7th
     and 6th, and the game's SAFE rank for the last lap is 3rd: **"YOU LOST"**. The pilot
-    finishes 2nd (2'20"61, the owner's best is 2'25"). The augmented fly has driven the full
+    finishes 2nd (2'20"61; the owner is faster, 2'10"-2'13", see step 25). The augmented fly has driven the full
     distance of Mute City I, but it hasn't *finished* it in the game's sense yet. It's about
     15% too slow.
 
@@ -310,6 +310,42 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
 24. **The owner's Master races.** Six Mute City I races on Master (unlocked through `$7F49FA`),
     placed 1st, 3rd, 1st, 2nd, 2nd, 1st; each replays bit-exact from power-on. Used as extra
     lessons for the implant (the fly's brain watches the owner's inputs being replayed).
+25. **The owner is faster than the pilot, so the teacher now copies the owner** (`flyzero/teacher.py`).
+    Replayed with the same stopwatch, the owner's 6 Beginner races take **2'10"-2'13" and win
+    every time** (laps 2-5: ~1,690 frames). The pilot took 2'23" and finished 3rd (~1,840 per
+    lap). The notes' old "owner 2'25"" was the recording's length at 60 fps, menus included.
+    How the owner drives, per track segment:
+    * **straights:** no D-pad at all, only small lean taps. D-pad taps cost speed; leans don't:
+      400 frames of gas give 1,976 speed, 1,799 with light steering taps, 1,975 with lean taps;
+    * **corners** (including the final U-turn): full D-pad **and** full lean together, with the
+      gas pulsed (on 35-65% of frames). That's the tightest turn the car has: 24 frames of it
+      turn 47°, D-pad alone 30°, lean alone 10°. The pilot nearly stopped in the U-turn (765
+      speed; the owner stays above 1,900) and dropped from 1st to 3rd there.
+
+    Three teachers, raced from the grid: 1 clean race, then 12 races each with random steering
+    shoves (5-30 frames of full D-pad) about every 17 s (light) and every 8 s (medium).
+    "Like the owner": how the teacher's turn command correlates with the owner's smoothed
+    turning, along the owner's own races.
+
+    | Teacher | Clean race | Top 3, light shoves | Top 3, medium shoves | Like the owner (r) | D-pad / lean use |
+    |---|---|---|---|---|---|
+    | old pilot (pure pursuit) | 3rd, 9,571 frames | 8/12 | 0/12 | 0.02 | 0.51 / 0.32 |
+    | owner-style pilot (lean first; 38-generation search) | 1st, 9,197 | 9/12 | 5/12 | 0.28 | 0.39 / 0.47 |
+    | **owner clone + corrections (teacher v2)** | 2nd, 9,853 | 8/12 | **7/12** | **0.43** | 0.23 / 0.25 |
+    | the owner | 1st, ~8,700-8,850 | | | | 0.13 / 0.22 |
+
+    Teacher v2 is a small network cloned from the owner's buttons. Its inputs are the car's
+    offset and heading relative to the racing line, the bends ahead, speed, and how offset and
+    heading are changing. On a race it never saw, it follows the owner's steering at r = 0.91
+    (15-frame smoothing both ways, so not the same measure as the table). Alone, it stalled
+    in lap 1: it drifted into places the owner never went. DAgger fixes that. The clone drives,
+    and wherever it is off the line, the owner-style pilot labels the correction. After 10
+    rounds, the best-tested round (6) is the teacher. It reads RAM like the pilot, so it is not
+    the fly and never drives the fly's car. It only labels. It lives in
+    `runs/pilot/mute_city_teacher.npz`, and every trainer takes it through `--line`. (This file was
+    built with each of the owner's buttons paired with the state one frame *after* it. A human
+    reacts in ~12 frames, so the shift is small, but `teacher data` now pairs the state
+    *before*. A rebuild replaces this file only if it tests better.)
 
 ### Earlier findings
 
