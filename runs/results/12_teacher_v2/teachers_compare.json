@@ -1,0 +1,74 @@
+{
+ "old pilot": {
+  "clean": {
+   "frames": 9571,
+   "lap": 5,
+   "rank": 3,
+   "fin": true,
+   "steer": 0.4188695016194755,
+   "lean": 0.13708076481036463
+  },
+  "light_top3": 8,
+  "light_5laps": 11,
+  "medium_top3": 0,
+  "medium_5laps": 6,
+  "light_fin_frames": [
+   9628,
+   9749,
+   9788,
+   9860,
+   9908,
+   9947,
+   9963,
+   10251
+  ]
+ },
+ "tuned owner-style pilot": {
+  "clean": {
+   "frames": 9197,
+   "lap": 5,
+   "rank": 1,
+   "fin": true,
+   "steer": 0.3122757420898119,
+   "lean": 0.4802653039034468
+  },
+  "light_top3": 9,
+  "light_5laps": 9,
+  "medium_top3": 5,
+  "medium_5laps": 5,
+  "light_fin_frames": [
+   9246,
+   9350,
+   9491,
+   9573,
+   9789,
+   9863,
+   9923,
+   10006,
+   10099
+  ]
+ },
+ "owner clone (teacher v2)": {
+  "clean": {
+   "frames": 3175,
+   "lap": 1,
+   "rank": 1,
+   "fin": false,
+   "steer": 0.2979527559055118,
+   "lean": 0.3543307086614173
+  },
+  "light_top3": 7,
+  "light_5laps": 7,
+  "medium_top3": 5,
+  "medium_5laps": 7,
+  "light_fin_frames": [
+   9406,
+   9477,
+   9601,
+   9639,
+   9968,
+   10098,
+   10242
+  ]
+ }
+}

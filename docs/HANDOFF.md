@@ -27,9 +27,11 @@ GPU). Read this first, then `README.md` (the lab notebook) and `docs/fzero-inter
 | **augmented fly** (natural fly + implant) | **finishes top 3 in 4 of 16 races** (2nd, 2nd, 3rd, 3rd); first finish 3rd, 2'35"34 |
 | augmented fly, Practice mode (no rank rule) | finishes 11 of 16 races |
 | natural fly (its own synapses only) | best drive 3 laps; about 1 lap on average; never finished |
-| CNN, DAgger with the same pilot | best 157 segments (2.7 laps) |
+| **CNN baseline v2** (no fly; screen → buttons; owner-style teacher) | **top 3 in 33 of 36 races (21 wins)**, fastest 9,346 frames |
+| CNN, DAgger with the old pilot | best 157 segments (2.7 laps) |
 | CNN on the owner's races | 3 segments |
-| pilot (teacher, reads RAM) | 2nd, 2'20"61 |
+| old pilot (teacher, reads RAM) | 3rd, 9,571 frames (an earlier version: 2nd, 2'20"61) |
+| teacher v2 (owner clone + corrections, reads RAM) | 2nd, 9,853 frames; most robust to shoves (README step 25) |
 | owner (human), 6 Beginner races | 1st every time, 2'10"-2'13" (laps ~1,690 frames) |
 
 A finish means top 3 at the final line: the last lap's SAFE rank is 3, and crossing lower ends in

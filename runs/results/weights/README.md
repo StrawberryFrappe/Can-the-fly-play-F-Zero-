@@ -10,3 +10,7 @@
   I top 3 in 4 of 16 races with that host. Use `python -m flyzero.implant --host
   runs/results/weights/natural_fly_host_r3g_800k.npz --l2-top 2000 --taps --resume <folder with
   implant.pt + normaliser.npz> --eval 16`.
+* `cnn_baseline_v2_mute_city.pt`: baseline v2, a CNN with no fly that reads the screen (`flyzero/cnn_dagger.py`),
+  taught by the owner-style pilot (`runs/pilot/mute_city_owner_style.npz`). Top 3 in 33 of 36
+  Grand Prix races (21 wins). Copy it as `cnn.pt` into a folder and run `python -m flyzero.cnn_dagger
+  --resume <folder> --line runs/pilot/mute_city_owner_style.npz --eval 36 --out <dir>`.

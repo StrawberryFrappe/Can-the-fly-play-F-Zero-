@@ -1,0 +1,26 @@
+{
+ "owner clone (teacher v2, round 6)": {
+  "clean": {
+   "frames": 9853,
+   "lap": 5,
+   "rank": 2,
+   "fin": true,
+   "steer": 0.3067086166649751,
+   "lean": 0.35116208261443216
+  },
+  "light_top3": 8,
+  "light_5laps": 10,
+  "medium_top3": 7,
+  "medium_5laps": 8,
+  "light_fin_frames": [
+   9245,
+   9614,
+   9692,
+   9816,
+   9849,
+   9885,
+   10134,
+   10445
+  ]
+ }
+}

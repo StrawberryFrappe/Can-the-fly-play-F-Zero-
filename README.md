@@ -346,6 +346,17 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     built with each of the owner's buttons paired with the state one frame *after* it. A human
     reacts in ~12 frames, so the shift is small, but `teacher data` now pairs the state
     *before*. A rebuild replaces this file only if it tests better.)
+26. **Baseline v2: a plain network that finishes consistently** (`flyzero/cnn_dagger.py`). No
+    fly. A small CNN (3 convolutions + 256 units) reads the game picture: 56×64 colour, now and
+    4 frames earlier. It presses the buttons itself, trained by DAgger + DART with the
+    owner-style pilot as the teacher on 6 emulators at once. The pilot's intent is the label
+    (tap duty cycles as probabilities), and the network samples its buttons from them, so no
+    two races are the same. After one DAgger round (27 minutes) its exam was 12 of 12 top 3.
+    **Evaluated over 36 Grand Prix races: top 3 in 33 (92%), 21 wins**, median 9,755 frames,
+    fastest 9,346 (1st). The fastest race is `runs/results/milestones/GP_BEGINNER_CNN_v2_1st_9346.npz`;
+    logs are in `runs/results/12_teacher_v2/`. What changed from the CNN that managed 2.7 laps
+    (step 19): a teacher that drives like the owner, recovery data (DART), soft labels, many
+    emulators, and a bigger network. It's the model to beat.
 
 ### Earlier findings
 
