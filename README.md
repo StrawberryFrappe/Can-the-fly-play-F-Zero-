@@ -357,6 +357,41 @@ addresses, HUD pixels and menu timings are in [docs/fzero-internals.md](docs/fze
     logs are in `runs/results/12_teacher_v2/`. What changed from the CNN that managed 2.7 laps
     (step 19): a teacher that drives like the owner, recovery data (DART), soft labels, many
     emulators, and a bigger network. It's the model to beat.
+27. **The augmented fly with a 50/50 budget, and the fly's slow hands.** The owner asked that
+    the implant not take over, so `--budget 0.5` gates it. For each control (steer, lean, gas,
+    boost), the implant predicts whether the fly's own choice is about to be wrong. It learns
+    this from frames where the fly drove alone. It then writes into that control only then,
+    for at most 50% of racing frames. The rest of the time the fly's own DNs decide, with no
+    current injected. Trained with teacher v2 for 23 rounds, it used its budget (steer 47-49%,
+    lean 49-51%, gas ~0%, boost ~7%) but stayed at **100-180 mean segments with no
+    finishes**. Without a budget it did no better (70-170).
+    Two negative results along the way:
+    * the natural fly re-taught by teacher v2 got worse (53 → 31 segments after 400k frames).
+      The clone steers with light taps, and the fly's hold-style readout learns "barely steer"
+      from that;
+    * a 50% budget with a 0.5 floor (write only where the fly is "more likely wrong than
+      right") used only 30-39%.
+
+    **Where it loses: the fly's hands.** Test: baseline v2 (92% top 3 on its own) gives the
+    orders through the fly's write path. Its intent becomes target rates for the motor DN
+    groups; the clamp injects current until they fire at those rates; the fly's own DNs press
+    the buttons through the readout. 16 races each (`--cnn`, `runs/results/13_hands/`):
+
+    | Write path | Top 3 | 5 laps | Mean segments |
+    |---|---|---|---|
+    | clamp gain 0.02, 80 ms rate estimate; readout smoothing 80 ms (all augmented flies so far) | 4/16 | 9 | 245 |
+    | clamp gain 0.08, 40 ms | 10/16 | 11 | 244 |
+    | **clamp gain 0.08, 40 ms; readout 30 ms** | **13/16** | 14 | 276 |
+    | (baseline v2 pressing the buttons itself) | 33/36 | | |
+
+    The step response says why. The old path needed 14-15 frames for the steer buttons to reach
+    half of an order, and 23-24 frames for lean, a quarter to half a second late at full speed.
+    The faster clamp gets there in 10 and 13-15 frames. More gain makes lean unstable. So the
+    fly's hands were accurate but slow, and that alone cost two thirds of the finishes. The
+    old augmented fly's 4/16 is exactly what a near-perfect driver gets through those hands.
+    The clamp and the readout are both ours (the implant's write electronics and the button
+    interface), so speeding them up is a local augmentation of the write path. The fly still
+    presses every button through its own DNs.
 
 ### Earlier findings
 

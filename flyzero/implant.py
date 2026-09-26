@@ -69,12 +69,12 @@ def electrodes(conn, decode_file: str | None = "work/decode_data.npz", l2_top: i
 class Clamp:
     """Closed-loop current injection into the motor DN groups, per slot."""
 
-    def __init__(self, fleet, gain: float = 0.02, limit: float = 20.0):
+    def __init__(self, fleet, gain: float = 0.02, limit: float = 20.0, tau_ms: float = 80.0):
         import cupy as cp
 
         from .batch import GROUPS
 
-        self.fleet, self.gain, self.limit = fleet, gain, limit
+        self.fleet, self.gain, self.limit, self.tau_ms = fleet, gain, limit, tau_ms
         conn, B = fleet.conn, fleet.B
         self.groups = [conn.find(*GROUPS[g]) for g in CLAMP_GROUPS]
         self.slots = [fleet.brain.slots(ix) for ix in self.groups]
@@ -93,7 +93,7 @@ class Clamp:
         nothing and holds its controller where it was."""
         import cupy as cp
 
-        a = 1 - np.exp(-window_ms / 80.0)
+        a = 1 - np.exp(-window_ms / self.tau_ms)
         inst = np.stack([cp.asnumpy(counts[:, ix].mean(1)) for ix in self._idx], 1) * (1000.0 / window_ms)
         self.rate += a * (inst - self.rate)
         g_on = active[:, None] * (1.0 if gate is None else gate)
@@ -210,7 +210,7 @@ def run(a):
     # maps onto its duty cycle (160 Hz = full turn, 80 Hz = full lean in the lesson targets)
     pix = a.inputs == "pixels"   # control: the same implant reading the screen instead of the fly's neurons
     fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True, taps=a.taps, steer_span=150.0, lean_span=70.0,
-                  pixels=pix)
+                  pixels="view" if a.cnn else pix, readout_tau=a.readout_tau)
     host = BatchInstruct(fleet.brain, fleet.conn)
     host.load(np.load(a.host))                     # the natural fly, unchanged from here on
     idx = np.array([-1]) if pix else electrodes(fleet.conn, l2_top=a.l2_top)
@@ -218,7 +218,7 @@ def run(a):
     d_idx = cp.asarray(idx)
     print(f"pixel control: {n_in} pixel inputs (the fly's neurons are not read)" if pix else
           f"augmented fly: {len(idx)} electrodes, host {a.host}", flush=True)
-    clamp = Clamp(fleet)
+    clamp = Clamp(fleet, gain=a.clamp_gain, tau_ms=a.clamp_tau)
     from .batch import GROUPS as _G
 
     gf = fleet.conn.find(*_G["gf"])
@@ -249,6 +249,24 @@ def run(a):
     starts = fleet.pool.pilot_drive(exam_state, 12000, 120)
     rng = np.random.default_rng(a.seed)
 
+    cnn = None
+    if a.cnn:   # test of the fly's hands: the CNN baseline gives the orders, the clamp and DNs carry them out
+        from .cnn_dagger import LAG as CNN_LAG
+        from .cnn_dagger import build_net as build_cnn
+
+        cnn = build_cnn(a.cnn_width).to(dev)
+        cnn.load_state_dict(torch.load(a.cnn, map_location=dev, weights_only=True))
+        cnn.eval()
+
+    def cnn_intent(views):
+        x = np.stack([np.concatenate([v[-1], v[0]], -1) for v in views])
+        with torch.no_grad():
+            s, le, g, b = cnn(torch.as_tensor(x, device=dev).permute(0, 3, 1, 2).float() / 255.0)
+            ps, pl = torch.softmax(s, 1).cpu().numpy(), torch.softmax(le, 1).cpu().numpy()
+            pg, pb = torch.sigmoid(g).cpu().numpy(), torch.sigmoid(b).cpu().numpy()
+        return np.stack([ps[:, 2] - ps[:, 1], pl[:, 2] - pl[:, 1], (pg > 0.5).astype(float), np.zeros(len(pg)),
+                         (pb > 0.5).astype(float)], 1)
+
     def features():
         f = ema * np.float32(1000.0 / fleet.window)
         return f if mu is None else (f - mu) / sd
@@ -268,6 +286,8 @@ def run(a):
         from .tune import Progress
         from .record import buttons_to_mask
 
+        if cnn is not None:   # --cnn: the baseline's picture history per slot
+            views = [[inf["view"]] * (CNN_LAG + 1) for inf in infos]
         progs = [Progress(fleet.segments) for _ in range(B)]
         live = np.ones(B, bool)
         gf_hz = np.zeros(B)
@@ -292,15 +312,17 @@ def run(a):
                     outs = net(x)
                     intent = intent_analog(outs) if a.taps else intent_from(outs)
                     p_need = torch.sigmoid(outs[5]).cpu().numpy()
+                    if cnn is not None:   # the orders come from the CNN baseline instead
+                        intent = cnn_intent(views)
                 tgt = np.array([targets(v, ip) for v in intent], np.float32)
                 if budget < 1.0:
                     # write only where the fly is predicted wrong, and within budget: each channel's
-                    # threshold rises while the implant is over its share and relaxes (never below
-                    # 0.5, "more likely wrong than right") while under it
+                    # threshold rises while the implant is over its share and relaxes (down to
+                    # --budget-floor; 0.5 = "more likely wrong than right") while under it
                     gate_ch = (p_need > theta).astype(np.float64)
                     cnt = on & racing
                     if cnt.any():
-                        theta[:] = np.clip(theta + a.budget_eta * (gate_ch[cnt].mean(0) - budget), 0.5, 0.999)
+                        theta[:] = np.clip(theta + a.budget_eta * (gate_ch[cnt].mean(0) - budget), a.budget_floor, 0.999)
                 else:
                     gate_ch = np.ones((B, 4))
                 share += gate_ch * (on & racing)[:, None]
@@ -343,6 +365,9 @@ def run(a):
                 rates, infos = fleet.pool.step_pilot(pilot_noise)
             else:
                 rates, infos = fleet.pool.step(buttons)
+            if cnn is not None:
+                for k, inf in enumerate(infos):
+                    views[k] = views[k][1:] + [inf["view"]]
             for k, inf in enumerate(infos):
                 if not live[k]:
                     continue
@@ -578,6 +603,17 @@ def main(argv=None):
                     help="most the implant may write: share of racing frames per control (steer, lean, gas, "
                          "boost); the fly's own DNs decide the rest. 1 = always (the earlier augmented flies)")
     ap.add_argument("--budget-eta", type=float, default=0.002, help="gate threshold adaptation per frame")
+    ap.add_argument("--budget-floor", type=float, default=0.5,
+                    help="lowest gate threshold: 0.5 = write only where the fly is more likely wrong than right; "
+                         "lower lets the implant use its whole budget")
+    ap.add_argument("--cnn", help="with --eval: a CNN baseline (cnn_dagger) gives the orders through the "
+                                  "clamp and the fly's DNs (a test of the output path)")
+    ap.add_argument("--cnn-width", type=int, default=256)
+    # the write path (ours): how fast the injected current follows the implant, and how much the
+    # button readout smooths the DN rates. Defaults = the earlier augmented flies
+    ap.add_argument("--clamp-gain", type=float, default=0.02, help="mV per Hz of rate error per frame")
+    ap.add_argument("--clamp-tau", type=float, default=80.0, help="ms, the clamp's rate estimate")
+    ap.add_argument("--readout-tau", type=float, default=80.0, help="ms, DN rate smoothing of the button readout")
     ap.add_argument("--out", required=True)
     run(ap.parse_args(argv))
 

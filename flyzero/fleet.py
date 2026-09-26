@@ -23,7 +23,8 @@ class Fleet:
     def __init__(self, rom: str, batch: int, seed: int = 0, plastic_types=None,
                  bias_mv: float = 7.8, conn=None, core: str | None = None, line: str | None = None,
                  deep: bool = False, taps: bool = False, steer_span: float = 150.0, lean_span: float = 70.0,
-                 steer_threshold: float = 10.0, lean_threshold: float = 10.0, pixels: bool = False):
+                 steer_threshold: float = 10.0, lean_threshold: float = 10.0, pixels: bool = False,
+                 readout_tau: float = 80.0):
         """``line``: racing-line file for the pilot's labels (e.g. runs/pilot/mute_city_line.npz).
         ``deep``: also make the synapses onto the DNs' presynaptic partners plastic.
         ``plastic_types``: default ``batch.PLASTIC_TYPES`` (the motor DNs and the giant fiber).
@@ -56,7 +57,7 @@ class Fleet:
 
         self.motor = BatchMotor(conn, batch, MotorParams(taps=taps, steer_span=steer_span, lean_span=lean_span,
                                                          steer_threshold=steer_threshold,
-                                                         lean_threshold=lean_threshold))
+                                                         lean_threshold=lean_threshold, tau_ms=readout_tau))
         self.bias_idx = np.concatenate([conn.find(t) for t in BIAS_TYPES])
         self.bias_mv = bias_mv
         self.brain.set_bias(self.bias_idx, bias_mv)
