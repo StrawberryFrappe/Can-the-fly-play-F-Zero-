@@ -546,12 +546,15 @@ def run(a):
                 tag = "finish" if x["finished"] else "5laps"
                 save_run(out / f"{tag}_r{r}_{k}.npz", exam_state, x["masks"], x["rates"], "augmented",
                          progress=x["progress"], laps=x["lap"], frames=x["frames"], rank=x.get("rank"))
-        if top["progress"] > best:
-            best = top["progress"]
+        # best = most top-3 finishes, then the mean distance (a single full race says little)
+        score = 1000 * sum(x["finished"] for x in exam) + float(np.mean([x["progress"] for x in exam]))
+        if score > best:
+            best = score
             save_run(out / "best_drive.npz", exam_state, top["masks"], top["rates"], "augmented",
                      progress=top["progress"], laps=top["lap"], frames=top["frames"])
             torch.save(net.state_dict(), out / "implant.pt")
         torch.save(net.state_dict(), out / "implant_last.pt")
+        torch.save(net.state_dict(), out / f"implant_r{r}.pt")   # every round, for later evaluation
         (out / "gate.json").write_text(json.dumps({"budget": budget, "theta": theta.tolist()}))
         save_dataset(out, X, Y, Ya, n, Yw=Yw)
         if r == a.rounds:
