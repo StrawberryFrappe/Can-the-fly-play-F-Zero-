@@ -209,6 +209,8 @@ def run(a):
     # --taps: the readout taps at a rate set by the DNs, exactly as the pilot's continuous steering
     # maps onto its duty cycle (160 Hz = full turn, 80 Hz = full lean in the lesson targets)
     pix = a.inputs == "pixels"   # control: the same implant reading the screen instead of the fly's neurons
+    if a.cnn:   # a test of the write path only: exams, and the implant's own inputs stay the fly's neurons
+        assert a.eval and not pix, "--cnn needs --eval and --inputs neurons"
     fleet = Fleet(a.rom, B, seed=a.seed, line=a.line, deep=True, taps=a.taps, steer_span=150.0, lean_span=70.0,
                   pixels="view" if a.cnn else pix, readout_tau=a.readout_tau)
     host = BatchInstruct(fleet.brain, fleet.conn)
